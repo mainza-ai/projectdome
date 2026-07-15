@@ -11,3 +11,6 @@ Bootstrapped wiki from dev-docs: index, overview, architecture, all layer pages,
 
 ## [2026-07-15] wiki | Codebase documentation added
 Added wiki pages for every source module: server, mind-llm, voice-tts, alignment-pipeline, animation-engine, training-pipeline, reprojection, web-renderer, web-ui, gnm-sanity-check, export-tools, and setup. Updated index and log.
+
+## [2026-07-15] wiki | Production audit added
+Comprehensive gap analysis against google/GNM (8 gaps) and TimoBolkart/voca (6 gaps) with phased 6-phase implementation plan covering core architecture, full GNM expression control, rig kinematics, identity system, performance/latency, and testing.

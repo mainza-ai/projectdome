@@ -4,20 +4,32 @@ import json
 import base64
 import urllib.parse
 import io
+import gc
+import time
+import logging
+import traceback
 import soundfile as sf
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from functools import wraps
 
-# Ensure project root is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
+import torch
 from src.alignment.pipeline import AcousticPipeline
 from src.animation.emotion_blender import EmotionBlender
 from gnm.shape.semantic_sampler import IdentitySampler, Gender, Ethnicity, Expression
-import torch
-import torchaudio
 from src.training.model import SpeechToCoefficientsModel
 
-# Global pipeline instances
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+log = logging.getLogger('dome')
+
 pipeline = None
 blender = None
 identity_sampler = None
@@ -29,28 +41,25 @@ def init_neural_model():
     checkpoint_path = "voca/model/checkpoints/best_model.pt"
     if os.path.exists(checkpoint_path):
         try:
-            # We set MPS fallback flag to ensure linear interpolation op fallback to CPU behaves correctly
-            import os
-            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-            
             device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-            print(f"[Server] Loading SpeechToCoefficients model on {device}...")
-            
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            log.info(f"Loading SpeechToCoefficients model on {device}...")
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
             neural_model = SpeechToCoefficientsModel().to(device)
             neural_model.load_state_dict(checkpoint["model_state_dict"])
             neural_model.eval()
-            print("[Server] SpeechToCoefficients model loaded successfully.")
+            log.info("SpeechToCoefficients model loaded successfully.")
         except Exception as e:
-            print(f"[Server] Failed to load neural model: {e}")
+            log.error(f"Failed to load neural model: {e}")
             neural_model = None
     else:
-        print("[Server] SpeechToCoefficients checkpoint not found. fallback to Path A.")
+        log.info("SpeechToCoefficients checkpoint not found. fallback to Path A.")
 
 class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Mute default request logs to prevent terminal spam
         pass
+
+    def log_request(self, method, path, status, duration_ms):
+        log.info(f"{method} {path} -> {status} ({duration_ms:.0f}ms)")
 
     def serve_file(self, file_path, content_type):
         if not os.path.exists(file_path):
@@ -58,51 +67,41 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"File not found")
             return
-        
         file_size = os.path.getsize(file_path)
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(file_size))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        
         with open(file_path, 'rb') as f:
             self.wfile.write(f.read())
 
     def do_GET(self):
-        url_path = urllib.parse.urlparse(self.path).path
-        if url_path == "/" or url_path == "":
-            url_path = "/index.html"
-
-        # Serve from 'web/', 'data/', or 'assets/' folder
-        if url_path.startswith("/data/") or url_path.startswith("/assets/"):
-            local_path = url_path.lstrip("/")
-        else:
-            local_path = os.path.join("web", url_path.lstrip("/"))
-
-        # Determine Content-Type
-        if local_path.endswith(".html"):
-            content_type = "text/html"
-        elif local_path.endswith(".css"):
-            content_type = "text/css"
-        elif local_path.endswith(".js"):
-            content_type = "application/javascript"
-        elif local_path.endswith(".json"):
-            content_type = "application/json"
-        elif local_path.endswith(".bin"):
-            content_type = "application/octet-stream"
-        elif local_path.endswith(".wav"):
-            content_type = "audio/wav"
-        elif local_path.endswith(".png"):
-            content_type = "image/png"
-        elif local_path.endswith(".jpg") or local_path.endswith(".jpeg"):
-            content_type = "image/jpeg"
-        elif local_path.endswith(".gif"):
-            content_type = "image/gif"
-        else:
-            content_type = "text/plain"
-
-        self.serve_file(local_path, content_type)
+        t0 = time.time()
+        try:
+            url_path = urllib.parse.urlparse(self.path).path
+            if url_path == "/" or url_path == "":
+                url_path = "/index.html"
+            if url_path.startswith("/data/") or url_path.startswith("/assets/"):
+                local_path = url_path.lstrip("/")
+            else:
+                local_path = os.path.join("web", url_path.lstrip("/"))
+            ext = os.path.splitext(local_path)[1].lower()
+            content_types = {
+                ".html": "text/html", ".css": "text/css", ".js": "application/javascript",
+                ".json": "application/json", ".bin": "application/octet-stream",
+                ".wav": "audio/wav", ".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml",
+                ".ico": "image/x-icon",
+            }
+            content_type = content_types.get(ext, "text/plain")
+            self.serve_file(local_path, content_type)
+        except Exception as e:
+            log.error(f"GET error: {e}")
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"Internal server error")
+        self.log_request("GET", self.path, 200, (time.time() - t0) * 1000)
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -112,9 +111,19 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data.decode('utf-8'))
+        t0 = time.time()
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            data = json.loads(post_data.decode('utf-8')) if post_data else {}
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"Invalid JSON: {e}"}).encode('utf-8'))
+            self.log_request("POST", self.path, 400, (time.time() - t0) * 1000)
+            return
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -123,79 +132,76 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
 
         response = {}
 
-        if self.path == "/api/speak":
-            text = data.get("text", "")
-            emotion = data.get("emotion", None)
-            intensity = data.get("intensity", 1.0)
-            style_id = int(data.get("style_id", 0)) # style conditional conditioning index
-            
-            print(f"[Server] API /api/speak request: '{text}' (emotion: {emotion}, intensity: {intensity}, style: {style_id})")
-            
-            # Execute acoustic pipeline
-            audio, sr, visemes = pipeline.process(text)
-            
-            # Encode audio to in-memory WAV buffer
-            wav_io = io.BytesIO()
-            sf.write(wav_io, audio, sr, format='WAV')
-            wav_bytes = wav_io.getvalue()
-            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-            
-            response = {
-                "audio_base64": audio_base64,
-                "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in visemes]
-            }
+        try:
+            if self.path == "/api/speak":
+                text = data.get("text", "")
+                emotion = data.get("emotion", None)
+                intensity = float(data.get("intensity", 1.0))
+                style_id = int(data.get("style_id", 0))
+                log.info(f"/api/speak: '{text[:60]}...' (emotion: {emotion}, style: {style_id})")
+                audio, sr, visemes = pipeline.process(text)
+                wav_io = io.BytesIO()
+                sf.write(wav_io, audio, sr, format='WAV')
+                wav_bytes = wav_io.getvalue()
+                audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
+                del wav_io, wav_bytes
+                response = {
+                    "audio_base64": audio_base64,
+                    "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in visemes]
+                }
 
-        elif self.path == "/api/emotion":
-            name = data.get("name", "")
-            intensity = data.get("intensity", 1.0)
-            print(f"[Server] API /api/emotion request: '{name}' (intensity: {intensity})")
-            
-            coeffs = blender.get_emotion_coefficients(name, intensity)
-            response = {
-                "coefficients": coeffs.tolist()
-            }
+            elif self.path == "/api/emotion":
+                name = data.get("name", "")
+                intensity = float(data.get("intensity", 1.0))
+                coeffs = blender.get_emotion_coefficients(name, intensity)
+                response = {"coefficients": coeffs.tolist()}
 
-        elif self.path == "/api/identity":
-            gender = int(data.get("gender", 0))
-            ethnicity = int(data.get("ethnicity", 2))
-            print(f"[Server] API /api/identity request: gender={gender}, ethnicity={ethnicity}")
-            
-            g_enum = Gender(gender)
-            e_enum = Ethnicity(ethnicity)
-            
-            # Generate 253 identity coefficients
-            coeffs = identity_sampler.sample_identity(g_enum, e_enum, num_samples=1)[0]
-            response = {
-                "coefficients": coeffs.tolist()
-            }
+            elif self.path == "/api/identity":
+                gender = int(data.get("gender", 0))
+                ethnicity = int(data.get("ethnicity", 2))
+                g_enum = Gender(gender)
+                e_enum = Ethnicity(ethnicity)
+                coeffs = identity_sampler.sample_identity(g_enum, e_enum, num_samples=1)[0]
+                response = {"coefficients": coeffs.tolist()}
 
-        elif self.path == "/api/blink":
-            print("[Server] API /api/blink request")
-            left_wink = blender.sampler.sample_expression(Expression.WINK_LEFT, num_samples=1)[0]
-            right_wink = blender.sampler.sample_expression(Expression.WINK_RIGHT, num_samples=1)[0]
-            # Blend left and right winks to create a full closed eyelid blink
-            blink_coeffs = (left_wink + right_wink).tolist()
-            response = {
-                "coefficients": blink_coeffs
-            }
+            elif self.path == "/api/blink":
+                left_wink = blender.sampler.sample_expression(Expression.WINK_LEFT, num_samples=1)[0]
+                right_wink = blender.sampler.sample_expression(Expression.WINK_RIGHT, num_samples=1)[0]
+                blink_coeffs = (left_wink + right_wink).tolist()
+                response = {"coefficients": blink_coeffs}
+
+            else:
+                response = {"error": f"Unknown endpoint: {self.path}"}
+                self.log_request("POST", self.path, 404, (time.time() - t0) * 1000)
+
+        except Exception as e:
+            log.error(f"/api{suffix_from_path(self.path)} failed: {traceback.format_exc()}")
+            response = {"error": str(e)}
+        finally:
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         self.wfile.write(json.dumps(response).encode('utf-8'))
+        self.log_request("POST", self.path, 200, (time.time() - t0) * 1000)
+
+def suffix_from_path(path):
+    return path.replace("/api/", " ")
 
 def run_server(port=8000):
     global pipeline, blender, identity_sampler
-    print("=== Initializing Server Engines ===")
+    log.info("=== Initializing Server Engines ===")
     pipeline = AcousticPipeline()
     blender = EmotionBlender()
     identity_sampler = IdentitySampler()
-    print("=== Server Engines Initialized ===")
-
+    log.info("=== Server Engines Initialized ===")
     server_address = ('', port)
     httpd = HTTPServer(server_address, GnmHTTPRequestHandler)
-    print(f"=== Project Dome local web app is available at http://localhost:{port}/ ===")
+    log.info(f"=== Project Dome available at http://localhost:{port}/ ===")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping server.")
+        log.info("Stopping server.")
         httpd.server_close()
 
 if __name__ == "__main__":

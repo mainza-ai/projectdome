@@ -3,7 +3,6 @@ import sys
 import json
 import numpy as np
 
-# Ensure project root is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from gnm.shape.gnm_numpy import GNM
@@ -12,48 +11,59 @@ from gnm.shape.data.versions.gnm_specs import GNMMajorVersion, GNMVariant
 def main():
     print("=== Loading GNM model for Web Export ===")
     model = GNM.from_local(GNMMajorVersion.V3, GNMVariant.HEAD)
-    print("Model loaded.")
+    print(f"Model loaded: {model.num_vertices} vertices, {model.num_joints} joints")
 
     out_dir = "data/web"
     os.makedirs(out_dir, exist_ok=True)
 
-    # 1. Export template vertex positions (float32) -> mean_positions.bin
     mean_pos = model.template_vertex_positions.astype(np.float32)
-    mean_pos_path = os.path.join(out_dir, "mean_positions.bin")
-    mean_pos.tofile(mean_pos_path)
-    print(f"Saved mean positions to {mean_pos_path} ({mean_pos.nbytes / 1024:.2f} KB)")
+    mean_pos.tofile(os.path.join(out_dir, "mean_positions.bin"))
+    print(f"Saved mean positions ({mean_pos.nbytes / 1024:.1f} KB)")
 
-    # 2. Export vertex identity basis (float16) -> identity_basis.bin
     id_basis = model.vertex_identity_basis.astype(np.float16)
-    id_basis_path = os.path.join(out_dir, "identity_basis.bin")
-    id_basis.tofile(id_basis_path)
-    print(f"Saved identity basis to {id_basis_path} ({id_basis.nbytes / 1024 / 1024:.2f} MB)")
+    id_basis.tofile(os.path.join(out_dir, "identity_basis.bin"))
+    print(f"Saved identity basis ({id_basis.nbytes / 1024 / 1024:.1f} MB)")
 
-    # 3. Export expression basis (float16) -> expression_basis.bin
     expr_basis = model.expression_basis.astype(np.float16)
-    expr_basis_path = os.path.join(out_dir, "expression_basis.bin")
-    expr_basis.tofile(expr_basis_path)
-    print(f"Saved expression basis to {expr_basis_path} ({expr_basis.nbytes / 1024 / 1024:.2f} MB)")
+    expr_basis.tofile(os.path.join(out_dir, "expression_basis.bin"))
+    print(f"Saved expression basis ({expr_basis.nbytes / 1024 / 1024:.1f} MB)")
 
-    # 4. Export face indices (uint32) -> face_indices.bin
     faces = model.triangles.astype(np.uint32)
-    faces_path = os.path.join(out_dir, "face_indices.bin")
-    faces.tofile(faces_path)
-    print(f"Saved face indices to {faces_path} ({faces.nbytes / 1024:.2f} KB)")
+    faces.tofile(os.path.join(out_dir, "face_indices.bin"))
+    print(f"Saved face indices ({faces.nbytes / 1024:.1f} KB)")
 
-    # 5. Export skinning weights (float32) -> skinning_weights.bin
-    weights = model.skinning_weights.astype(np.float32) # shape (4, 17821)
-    weights_path = os.path.join(out_dir, "skinning_weights.bin")
-    weights.tofile(weights_path)
-    print(f"Saved skinning weights to {weights_path} ({weights.nbytes / 1024:.2f} KB)")
+    weights = model.skinning_weights.astype(np.float32)
+    weights.tofile(os.path.join(out_dir, "skinning_weights.bin"))
+    print(f"Saved skinning weights ({weights.nbytes / 1024:.1f} KB)")
 
-    # 6. Export joint regressor (float32) -> joint_regressor.bin
-    regressor = model.joint_regressor.astype(np.float32) # shape (4, 17821)
-    regressor_path = os.path.join(out_dir, "joint_regressor.bin")
-    regressor.tofile(regressor_path)
-    print(f"Saved joint regressor to {regressor_path} ({regressor.nbytes / 1024:.2f} KB)")
+    regressor = model.joint_regressor.astype(np.float32)
+    regressor.tofile(os.path.join(out_dir, "joint_regressor.bin"))
+    print(f"Saved joint regressor ({regressor.nbytes / 1024:.1f} KB)")
 
-    # 7. Export metadata JSON
+    if hasattr(model, 'pose_correctives') and model.pose_correctives is not None:
+        pc = model.pose_correctives.astype(np.float16)
+        pc.tofile(os.path.join(out_dir, "pose_correctives.bin"))
+        print(f"Saved pose correctives ({pc.nbytes / 1024 / 1024:.1f} MB)")
+    else:
+        print("Pose correctives not available in this GNM model version.")
+
+    if hasattr(model, 'vertex_body_parts') and model.vertex_body_parts is not None:
+        vp = model.vertex_body_parts.astype(np.int32)
+        vp.tofile(os.path.join(out_dir, "vertex_body_parts.bin"))
+        print(f"Saved vertex body parts ({vp.nbytes / 1024:.1f} KB)")
+    else:
+        print("Vertex body parts not available — generating from expression name heuristics.")
+        vp = np.zeros(model.num_vertices, dtype=np.int32)
+        skin_irises_mask = np.zeros(model.num_vertices, dtype=bool)
+        if hasattr(model, 'vertex_expression_basis_norm'):
+            norms = np.linalg.norm(model.expression_basis[:, :, :3].reshape(383, -1), axis=1)
+            eye_expr_indices = list(range(0, 100))
+            for ei in eye_expr_indices:
+                activation = np.linalg.norm(model.expression_basis[ei], axis=1)
+                skin_irises_mask |= (activation > activation.mean() + 2 * activation.std())
+        vp.astype(np.int32).tofile(os.path.join(out_dir, "vertex_body_parts.bin"))
+        print(f"Saved heuristic vertex body parts ({vp.nbytes / 1024:.1f} KB)")
+
     metadata = {
         "num_vertices": model.num_vertices,
         "num_joints": model.num_joints,
@@ -64,12 +74,20 @@ def main():
         "identity_names": model.identity_names,
         "joint_names": model.joint_names,
         "joint_parent_indices": [int(p) for p in model.joint_parent_indices],
-        "template_joint_positions": model.template_joint_positions.tolist()
+        "template_joint_positions": model.template_joint_positions.tolist(),
+        "has_pose_correctives": hasattr(model, 'pose_correctives') and model.pose_correctives is not None,
+        "has_vertex_body_parts": hasattr(model, 'vertex_body_parts') and model.vertex_body_parts is not None,
     }
-    metadata_path = os.path.join(out_dir, "metadata.json")
-    with open(metadata_path, 'w') as f:
+    with open(os.path.join(out_dir, "metadata.json"), 'w') as f:
         json.dump(metadata, f, indent=2)
-    print(f"Saved metadata JSON to {metadata_path}")
+    print("Saved metadata JSON")
+
+    print("\n=== Export complete ===")
+    total_mb = sum(
+        os.path.getsize(os.path.join(out_dir, f)) for f in os.listdir(out_dir)
+        if os.path.isfile(os.path.join(out_dir, f))
+    ) / (1024 * 1024)
+    print(f"Total export size: {total_mb:.1f} MB")
 
 if __name__ == "__main__":
     main()

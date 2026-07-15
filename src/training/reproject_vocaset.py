@@ -5,12 +5,20 @@ import numpy as np
 from scipy.spatial import KDTree
 from tqdm import tqdm
 
-# Ensure project root is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from gnm.shape.gnm_numpy import GNM
 from gnm.shape.data.versions.gnm_specs import GNMMajorVersion, GNMVariant
-from gnm.shape.fitting_utils.project_on_pca import project_on_linear_vertex_basis, PCABasisProjection
+from gnm.shape.fitting_utils.project_on_pca import PCABasisProjection
+
+VOCA_SPEAKER_ORDER = [
+    'FaceTalk_170728_03272_TA', 'FaceTalk_170904_00128_TA',
+    'FaceTalk_170725_00137_TA', 'FaceTalk_170915_00223_TA',
+    'FaceTalk_170811_03274_TA', 'FaceTalk_170913_03279_TA',
+    'FaceTalk_170904_03276_TA', 'FaceTalk_170912_03278_TA',
+    'FaceTalk_170811_03275_TA', 'FaceTalk_170908_03277_TA',
+    'FaceTalk_170809_00138_TA', 'FaceTalk_170731_00024_TA',
+]
 
 def compute_icp_alignment(src_mesh, tgt_mesh, max_iterations=50):
     """Compute optimal rotation R, translation t, and closest vertex indices mapping src to tgt."""
@@ -150,13 +158,17 @@ def main():
             # Extract 182 speech coefficients (lower face index 200-349 & tongue index 350-381)
             speech_coeffs = seq_coeffs[:, 200:382] # shape (seq_len, 182)
             
-            # Save reprojected item
+            try:
+                speaker_id = VOCA_SPEAKER_ORDER.index(speaker)
+            except ValueError:
+                speaker_id = -1
             out_file = os.path.join(out_dir, f"{speaker}_{sentence}.npz")
             np.savez_compressed(
                 out_file,
                 audio=audio_data,
                 sample_rate=sample_rate,
-                coefficients=speech_coeffs
+                coefficients=speech_coeffs,
+                speaker_id=speaker_id,
             )
 
     print(f"\nReprojection complete! All reprojected NPZ files saved to: {out_dir}/")

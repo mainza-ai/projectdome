@@ -37,6 +37,10 @@ A GNM-based conversational 3D avatar engine ("the arbiter"). $0 budget, fully lo
 - [[training-pipeline|Training Pipeline]] — model architecture, dataset, training loop, evaluation
 - [[reprojection|VOCASET Reprojection]] — ICP + PCA reprojection to GNM space
 
+## Production Readiness
+
+- [[production-audit|Production Audit & Integration Plan]] — gap analysis vs GNM + VOCA, phased implementation plan
+
 ## Tools & Stack
 
 - [[tools|Tool Stack Reference]] — all tools with licenses and roles
