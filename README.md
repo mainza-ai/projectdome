@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Project Dome Logo" width="120">
+</p>
+
 # Project Dome
 
 Project Dome is a from-scratch conversational 3D avatar engine built on Google's parametric **Generative Anthropometric Model (GNM) Head** model (Apache 2.0). 
