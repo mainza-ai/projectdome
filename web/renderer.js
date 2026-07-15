@@ -165,6 +165,7 @@ function initScene() {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meanPositions), 3));
     geometry.setIndex(new THREE.BufferAttribute(faceIndices, 1));
+
     geometry.computeBoundingBox();
     const bb = geometry.boundingBox;
     const center = new THREE.Vector3();
@@ -172,27 +173,30 @@ function initScene() {
     const size = new THREE.Vector3();
     bb.getSize(size);
 
-    // Log diagnostic info to console
     console.log('Head BB min:', bb.min.toArray().map(v=>v.toFixed(4)));
     console.log('Head BB max:', bb.max.toArray().map(v=>v.toFixed(4)));
     console.log('Head center:', center.toArray().map(v=>v.toFixed(4)));
     console.log('Head size:', size.toArray().map(v=>v.toFixed(4)));
 
     const containerAspect = container.clientWidth / container.clientHeight;
-
-    // Position camera using bounding sphere for guaranteed centering
-    const bsphere = new THREE.Sphere();
-    geometry.computeBoundingSphere();
-    bsphere.copy(geometry.boundingSphere);
-    console.log('BSphere center:', bsphere.center.toArray().map(v=>v.toFixed(4)), 'radius:', bsphere.radius.toFixed(4));
-
     const vFov = 40 * Math.PI / 180;
     const margin = 1.5;
-    const dist = bsphere.radius * margin / Math.sin(vFov / 2);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const dist = maxDim * margin / (2 * Math.tan(vFov / 2));
+    console.log('MaxDim:', maxDim.toFixed(4), 'Dist:', dist.toFixed(4));
 
-    camera = new THREE.PerspectiveCamera(40, containerAspect, dist * 0.01, dist * 10);
-    camera.position.set(bsphere.center.x, bsphere.center.y, bsphere.center.z + dist);
-    camera.lookAt(bsphere.center);
+    // BUG: OrbitControls constructor calls update() internally, locking spherical
+    // coords relative to default target (0,0,0). If we create controls with camera
+    // already centered on head, the spherical offset includes the head center
+    // offset from origin. When we then set controls.target = center, the camera
+    // position doubles the offset.
+    //
+    // Fix: place camera at (0,0,dist) BEFORE creating controls (so spherical
+    // offset is just +Z). AFTER controls creation, set target to head center —
+    // the camera then becomes center + (0,0,dist) = (cx, cy, cz+dist).
+    camera = new THREE.PerspectiveCamera(40, containerAspect, 0.01, dist * 10);
+    camera.position.set(0, 0, dist);
+    camera.lookAt(0, 0, 0);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -202,7 +206,7 @@ function initScene() {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.target.copy(bsphere.center);
+    controls.target.copy(center);
     controls.update();
 
     console.log('Camera pos:', camera.position.toArray().map(v=>v.toFixed(4)));
