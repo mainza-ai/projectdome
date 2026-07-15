@@ -67,6 +67,10 @@ async function loadGnmBuffers() {
         expressionBasis = float16BufferToFloat32Array(await exprRes.arrayBuffer());
 
         console.log("Buffers loaded and decoded.");
+        console.log("Diagnostics - meanPositions length:", meanPositions.length);
+        console.log("Diagnostics - faceIndices length:", faceIndices.length);
+        console.log("Diagnostics - identityBasis length:", identityBasis.length);
+        console.log("Diagnostics - expressionBasis length:", expressionBasis.length);
         overlay.style.opacity = 0;
         setTimeout(() => overlay.style.display = "none", 500);
 
@@ -91,7 +95,7 @@ function initScene() {
     
     // Camera
     camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 0.1, 0.45); // Head is centered around origin
+    camera.position.set(0, 0.23, 0.45); // Centered on the face
     
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -107,7 +111,7 @@ function initScene() {
     controls.maxPolarAngle = Math.PI / 2 + 0.1;
     controls.minDistance = 0.2;
     controls.maxDistance = 1.0;
-    controls.target.set(0, 0.08, 0); // Focus on the face
+    controls.target.set(0, 0.23, 0.03); // Focus on the center of the head
     
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
@@ -145,6 +149,9 @@ function initScene() {
 
     // Initial neutral coefficient setup
     currentEmotionCoeffs = new Float32Array(metadata.expression_dim);
+    
+    // Auto-fetch default emotion on startup
+    updateCurrentEmotion();
 
     // Start render loop
     requestAnimationFrame(renderLoop);
@@ -187,7 +194,7 @@ function deformMesh(expressionCoeffs) {
 
     // 3. Update Three.js buffer
     const posAttr = faceMesh.geometry.attributes.position;
-    posAttr.copyArray(currentPos);
+    posAttr.array.set(currentPos);
     posAttr.needsUpdate = true;
     faceMesh.geometry.computeVertexNormals();
 

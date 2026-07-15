@@ -29,8 +29,10 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"File not found")
             return
         
+        file_size = os.path.getsize(file_path)
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(file_size))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         

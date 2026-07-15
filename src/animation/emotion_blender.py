@@ -13,9 +13,12 @@ class EmotionBlender:
         if not emotion_name:
             return np.zeros(383, dtype=np.float32)
 
-        # Convert string to Expression enum
+        # Convert string to Expression enum, mapping "SAD" to "CORNERS_DOWN"
         try:
-            enum_val = Expression[emotion_name.upper().strip()]
+            name = emotion_name.upper().strip()
+            if name == "SAD":
+                name = "CORNERS_DOWN"
+            enum_val = Expression[name]
         except KeyError:
             print(f"Warning: Unknown emotion '{emotion_name}'. Using neutral (all-zeros) pose.")
             return np.zeros(383, dtype=np.float32)

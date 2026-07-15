@@ -1,3 +1,6 @@
 [submodule "vendor/GNM"]
 	path = vendor/GNM
 	url = https://github.com/google/GNM.git
+[submodule "vendor/voca"]
+	path = vendor/voca
+	url = https://github.com/TimoBolkart/voca.git
