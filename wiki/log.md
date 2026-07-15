@@ -63,6 +63,12 @@ Complete implementation of all deep-dive audit findings:
 - Testing: 4 GNM forward pass regression tests (template, basis, forward, vertex count), 9 server integration tests (all endpoints + static files), 30 total tests passing
 - pose_correctives_regressor verified all zeros in v3.0 HEAD model — exported only if non-zero
 
+## [2026-07-15] fix | Emotion blend rewrite, head centering, Conv1D model
+- Emotion blend now uses speech-energy gate: when speaking, lower face = speech ONLY (emotion only in upper face). When silent, lower face = emotion fully. Zero interference between speech and emotion.
+- Camera repositioned: 40° FOV, centered on head at y=0.24, controls target z=0.03
+- Added VOCA-style Conv1D frontend option to SpeechToCoefficientsModel (4-layer Conv1D with stride-2, BatchNorm, configurable size factor)
+- All 31 unit tests + 9 server integration tests passing
+
 ## [2026-07-15] fix | Emotion/speech blend conflict
 CVAE emotion coefficients span the entire lower face (up to 4.7 magnitude for BLOW), conflicting with speech visemes. Fixed blend to use per-channel magnitude comparison: where speech energy > 0.15*emotion energy, speech wins; otherwise emotion tints the lower face subtly. Upper face (0-199) and pupils remain full emotion. Verified: 26 tests pass, all endpoints working.
 

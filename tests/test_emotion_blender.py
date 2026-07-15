@@ -50,9 +50,9 @@ def test_blend_anatomy():
     emotion = np.ones(383, dtype=np.float32)
     blended = blender.blend(speech, emotion)
     assert np.allclose(blended[0:200], emotion[0:200]), "Upper face should be full emotion"
-    assert np.allclose(blended[350:382], speech[150:182]), "Tongue should be full speech"
+    assert np.allclose(blended[200:350], speech[0:150]), "Lower face should be speech when speaking"
+    assert np.allclose(blended[350:382], speech[150:182]), "Tongue should be speech when speaking"
     assert np.allclose(blended[382], emotion[382]), "Pupils should be full emotion"
-    assert np.allclose(blended[200:350], speech[0:150]), "Lower face should be speech (speech magnitude > 0.15*emotion)"
     print("  PASS: blend_anatomy")
 
 def test_blend_emotion_wins_when_silent():
@@ -61,9 +61,9 @@ def test_blend_emotion_wins_when_silent():
     emotion = np.ones(383, dtype=np.float32)
     blended = blender.blend(speech, emotion)
     assert np.allclose(blended[0:200], emotion[0:200]), "Upper face should be full emotion"
-    assert np.allclose(blended[350:382], np.zeros(32)), "Tongue should be zero (no speech)"
+    assert np.allclose(blended[200:350], emotion[200:350]), "Lower face should be emotion when silent"
+    assert np.allclose(blended[350:382], emotion[350:382]), "Tongue should be emotion when silent"
     assert np.allclose(blended[382], emotion[382]), "Pupils should be full emotion"
-    assert np.allclose(blended[200:350], emotion[200:350] * 0.15), "Lower face should be 0.15*emotion when silent"
     print("  PASS: blend_emotion_wins_when_silent")
 
 if __name__ == "__main__":
