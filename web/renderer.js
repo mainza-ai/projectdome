@@ -162,9 +162,25 @@ function initScene() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f7);
 
-    const aspect = container.clientWidth / container.clientHeight;
-    camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
-    camera.position.set(0, 0.20, 0.58);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meanPositions), 3));
+    geometry.setIndex(new THREE.BufferAttribute(faceIndices, 1));
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox;
+    const center = new THREE.Vector3();
+    bb.getCenter(center);
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+    const headHeight = size.y;
+    const headCenterY = center.y;
+
+    const containerAspect = container.clientWidth / container.clientHeight;
+    const vFov = 42;
+    const vFovRad = vFov * Math.PI / 180;
+    const cameraDistance = (headHeight * 1.3) / (2 * Math.tan(vFovRad / 2));
+
+    camera = new THREE.PerspectiveCamera(vFov, containerAspect, 0.1, 100);
+    camera.position.set(0, headCenterY, center.z + cameraDistance);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -176,8 +192,8 @@ function initScene() {
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2 + 0.1;
     controls.minDistance = 0.2;
-    controls.maxDistance = 1.0;
-    controls.target.set(0, 0.20, 0.03);
+    controls.maxDistance = 1.5;
+    controls.target.copy(center);
 
     const amb = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(amb);
@@ -190,10 +206,6 @@ function initScene() {
     const rim = new THREE.DirectionalLight(0xffffff, 0.45);
     rim.position.set(0, 0.8, -0.8);
     scene.add(rim);
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meanPositions), 3));
-    geometry.setIndex(new THREE.BufferAttribute(faceIndices, 1));
 
     const vertColors = getVertexColors();
     if (vertColors) geometry.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
