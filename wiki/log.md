@@ -69,6 +69,9 @@ Complete implementation of all deep-dive audit findings:
 - Added VOCA-style Conv1D frontend option to SpeechToCoefficientsModel (4-layer Conv1D with stride-2, BatchNorm, configurable size factor)
 - All 31 unit tests + 9 server integration tests passing
 
+## [2026-07-15] fix | Head centering — bounding sphere camera framing
+Replaced hardcoded camera position with computed framing using THREE.Sphere bounding sphere: camera looks at bsphere.center, distance = radius * 1.5 / sin(FOV/2). Added diagnostic console.log for head bounds, camera position, and distance. Removed CSS !important canvas sizing rules that conflicted with Three.js setSize. Head bounds verified from Python: center=(0, 0.254, 0.067), radius=0.233.
+
 ## [2026-07-15] fix | Emotion/speech blend conflict
 CVAE emotion coefficients span the entire lower face (up to 4.7 magnitude for BLOW), conflicting with speech visemes. Fixed blend to use per-channel magnitude comparison: where speech energy > 0.15*emotion energy, speech wins; otherwise emotion tints the lower face subtly. Upper face (0-199) and pupils remain full emotion. Verified: 26 tests pass, all endpoints working.
 
