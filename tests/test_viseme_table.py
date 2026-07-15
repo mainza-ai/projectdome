@@ -28,10 +28,10 @@ def test_get_unknown_returns_idle():
 def test_default_values():
     table = VisemeTable()
     aa = table.get_coefficients("aa")
-    assert abs(aa[0] - 1.2) < 1e-5
-    assert abs(aa[1] - (-0.5)) < 1e-5
+    assert abs(aa[1] - 2.5) < 1e-5, f"aa[1] should be 2.5, got {aa[1]}"
+    assert abs(aa[0] - (-0.5)) < 1e-5
     ee = table.get_coefficients("EE")
-    assert abs(ee[2] - 1.5) < 1e-5
+    assert abs(ee[2] - 2.0) < 1e-5, f"EE[2] should be 2.0, got {ee[2]}"
     th = table.get_coefficients("TH")
     assert abs(th[150] - 1.0) < 1e-5
     print("  PASS: default_values")

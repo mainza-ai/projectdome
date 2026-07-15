@@ -22,18 +22,20 @@ class AnimationController {
         for (const v of visemes) {
             table[v] = new Array(182).fill(0.0);
         }
-        table["aa"][0] = 1.2; table["aa"][1] = -0.5;
-        table["OO"][0] = 0.5; table["OO"][1] = 1.5; table["OO"][T] = -0.3;
-        table["EE"][2] = 1.5; table["EE"][T + 1] = 0.4;
-        table["PP"][0] = -0.5; table["PP"][3] = 1.0;
-        table["FF"][3] = 0.5; table["FF"][T + 2] = 0.3;
-        table["TH"][0] = 0.3; table["TH"][T] = 1.0; table["TH"][T + 1] = 0.8; table["TH"][T + 2] = 0.3;
-        table["DD"][1] = 0.5; table["DD"][T] = 0.6; table["DD"][T + 1] = 0.7;
-        table["CH"][T] = 0.5; table["CH"][T + 2] = 0.6; table["CH"][T + 3] = 0.4;
-        table["kk"][2] = -0.3; table["kk"][T + 1] = 0.7; table["kk"][T + 2] = 0.5;
-        table["SS"][T] = 0.3; table["SS"][T + 1] = 0.5; table["SS"][T + 2] = 0.3;
-        table["RR"][T] = 0.6; table["RR"][T + 1] = 0.4; table["RR"][T + 2] = 0.5; table["RR"][T + 3] = 0.3;
-        table["schwa"][0] = 0.2; table["schwa"][T] = 0.3;
+        // GNM expression basis mapping (verified against model):
+        // [200] = lip raise (upward), [201] = jaw open (lip center down), [202] = lip spread
+        table["aa"][1] = 2.5;   table["aa"][0] = -0.5; table["aa"][2] = 0.5;
+        table["EE"][2] = 2.0;   table["EE"][1] = 1.0;  table["EE"][3] = 0.3;
+        table["OO"][1] = -1.0;  table["OO"][2] = -0.8; table["OO"][T] = -0.3;
+        table["PP"][1] = -1.5;  table["PP"][0] = -0.5; table["PP"][3] = 0.5;
+        table["FF"][1] = -0.3;  table["FF"][3] = 0.5;  table["FF"][T + 2] = 0.3;
+        table["TH"][1] = 0.3;   table["TH"][T] = 1.0;  table["TH"][T + 1] = 0.8; table["TH"][T + 2] = 0.3;
+        table["DD"][1] = 0.5;   table["DD"][T] = 0.6;  table["DD"][T + 1] = 0.7;
+        table["CH"][T] = 0.5;   table["CH"][T + 2] = 0.6; table["CH"][T + 3] = 0.4;
+        table["kk"][2] = -0.3;  table["kk"][T + 1] = 0.7; table["kk"][T + 2] = 0.5;
+        table["SS"][T] = 0.3;   table["SS"][T + 1] = 0.5; table["SS"][T + 2] = 0.3;
+        table["RR"][T] = 0.6;   table["RR"][T + 1] = 0.4; table["RR"][T + 2] = 0.5; table["RR"][T + 3] = 0.3;
+        table["schwa"][1] = 0.5; table["schwa"][T] = 0.3;
         return table;
     }
 

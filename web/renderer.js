@@ -349,8 +349,7 @@ function renderLoop(time) {
         blended = animController.blend(speechCoeffs, currentEmotionCoeffs);
     }
 
-    const finalCoeffs = new Float32Array(383);
-    for (let j = 0; j < 182; j++) finalCoeffs[200 + j] = blended[j];
+    const finalCoeffs = blended;
     if (blinkCoefficients && currentBlinkWeight > 0.01) {
         for (let j = 0; j < 200; j++) finalCoeffs[j] += blinkCoefficients[j] * currentBlinkWeight;
     }

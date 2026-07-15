@@ -33,23 +33,32 @@ class VisemeTable:
         for name in VISEMES:
             self.table[name] = np.zeros(182, dtype=np.float32)
 
-        self.table["aa"][0] = 1.2
-        self.table["aa"][1] = -0.5
+        # GNM expression basis mapping (verified against model):
+        # [0]=lower_face_region_000 (lip raise), [1]=lower_face_region_001 (jaw open/lip down),
+        # [2]=lower_face_region_002 (lip spread/narrow), [3-149]=other lower face components
+        # [150-181]=tongue components
 
-        self.table["OO"][0] = 0.5
-        self.table["OO"][1] = 1.5
+        self.table["aa"][1] = 2.5
+        self.table["aa"][0] = -0.5
+        self.table["aa"][2] = 0.5
+
+        self.table["EE"][2] = 2.0
+        self.table["EE"][1] = 1.0
+        self.table["EE"][3] = 0.3
+
+        self.table["OO"][1] = -1.0
+        self.table["OO"][2] = -0.8
         self.table["OO"][TONGUE_OFFSET] = -0.3
 
-        self.table["EE"][2] = 1.5
-        self.table["EE"][TONGUE_OFFSET + 1] = 0.4
-
+        self.table["PP"][1] = -1.5
         self.table["PP"][0] = -0.5
-        self.table["PP"][3] = 1.0
+        self.table["PP"][3] = 0.5
 
+        self.table["FF"][1] = -0.3
         self.table["FF"][3] = 0.5
         self.table["FF"][TONGUE_OFFSET + 2] = 0.3
 
-        self.table["TH"][0] = 0.3
+        self.table["TH"][1] = 0.3
         self.table["TH"][TONGUE_OFFSET] = 1.0
         self.table["TH"][TONGUE_OFFSET + 1] = 0.8
         self.table["TH"][TONGUE_OFFSET + 2] = 0.3
@@ -75,7 +84,7 @@ class VisemeTable:
         self.table["RR"][TONGUE_OFFSET + 2] = 0.5
         self.table["RR"][TONGUE_OFFSET + 3] = 0.3
 
-        self.table["schwa"][0] = 0.2
+        self.table["schwa"][1] = 0.5
         self.table["schwa"][TONGUE_OFFSET] = 0.3
 
     def get_coefficients(self, name: str) -> np.ndarray:
