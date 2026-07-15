@@ -1,0 +1,3 @@
+[submodule "vendor/GNM"]
+	path = vendor/GNM
+	url = https://github.com/google/GNM.git

@@ -1,0 +1,27 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Large data (tracked via Git LFS or excluded)
+voca/trainingdata/data_verts.npy
+voca/trainingdata/processed_audio_deepspeech.pkl
+voca/trainingdata/raw_audio_fixed.pkl
+voca/model/gstep_52280.model.data-*
+
+# Generated output
+output/
+data/web/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
