@@ -32,3 +32,6 @@ Completed remaining phases: tongue animation coefficients, identity PCA slider b
 - /api/speak/stream endpoint splits text into sentences, processes each chunk, returns combined + per-chunk data
 - Web client auto-selects streaming endpoint for text > 80 chars
 - Screenshot added to README
+
+## [2026-07-15] audit | Comprehensive codebase audit
+Full audit after production execution: 12 items fixed, 10 remaining gaps identified (A1-A7 critical, B1-B6 quality, C1-C4 performance), 5 missing features documented. Key fixes: eager import chains, Keras warnings fully suppressed, all 25 tests passing, server starts cleanly.

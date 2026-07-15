@@ -1,22 +1,63 @@
 import os
 import warnings
+import logging
 import numpy as np
 from typing import Dict, Optional
 from gnm.shape.semantic_sampler import ExpressionSampler, Expression
 import tensorflow as tf
 
-tf.get_logger().setLevel('ERROR')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+tf.get_logger().setLevel('ERROR')
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('absl').setLevel(logging.ERROR)
+
+warnings.filterwarnings('ignore', message='No training configuration found')
 
 class _SilentExpressionSampler(ExpressionSampler):
     def __init__(self, decoder_model_path=None, verbose=False):
         if decoder_model_path is None:
             from gnm.shape.semantic_sampler import _EXPRESSION_DECODER_PATH
             decoder_model_path = _EXPRESSION_DECODER_PATH
-        self._decoder = tf.keras.models.load_model(str(decoder_model_path), compile=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            self._decoder = tf.keras.models.load_model(str(decoder_model_path), compile=False)
         self._expression_names = tuple(member.name.lower() for member in Expression)
         self._num_classes = self._decoder.inputs[1].shape[-1]
         self._latent_dim = self._decoder.inputs[0].shape[-1]
+
+class _SilentIdentitySampler:
+    def __init__(self, decoder_model_path=None):
+        if decoder_model_path is None:
+            from gnm.shape.semantic_sampler import _IDENTITY_DECODER_PATH
+            decoder_model_path = _IDENTITY_DECODER_PATH
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            self._decoder = tf.keras.models.load_model(str(decoder_model_path), compile=False)
+        self._condition_dim = self._decoder.inputs[1].shape[-1]
+        self._LATENT_DIM = 64
+        self._NUM_GENDER_CLASSES = 2
+        self._NUM_ETHNICITIES_CLASSES = 4
+        self._GENDER_LABEL_MAP = {0: 'Female', 1: 'Male'}
+        self._ETHNICITY_LABEL_MAP = {0: 'Middle Eastern', 1: 'Asian', 2: 'White', 3: 'Black'}
+
+    def sample_identity(self, gender_class, ethnicity_class, num_samples=1, rng=None, verbose=False):
+        import numpy as np
+        from gnm.shape.semantic_sampler import _create_combined_one_hot_labels
+        raw_label_combo = np.array([[int(gender_class), int(ethnicity_class)]])
+        combined_ohe_label = _create_combined_one_hot_labels(
+            raw_label_combo, self._NUM_GENDER_CLASSES, self._NUM_ETHNICITIES_CLASSES
+        )
+        labels_for_decoder = np.repeat(combined_ohe_label, num_samples, axis=0)
+        rng = rng if rng is not None else np.random.default_rng()
+        z_sample = rng.normal(size=(num_samples, self._LATENT_DIM)).astype('float32')
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            generated_vectors = self._decoder.predict([z_sample, labels_for_decoder], verbose=0)
+        return generated_vectors
+
+    def explain_classes(self):
+        return {'gender': self._GENDER_LABEL_MAP, 'ethnicity': self._ETHNICITY_LABEL_MAP}
 
 class EmotionBlender:
     def __init__(self):

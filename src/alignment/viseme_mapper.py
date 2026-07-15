@@ -47,7 +47,7 @@ PHONEME_TO_VISEME = {
     "UW": "OO", "UH": "OO", "OW": "OO", "OY": "OO", "AW": "OO",
     
     # Neutral/Schwa
-    "AX": "schwa", "AH0": "schwa", "AXR": "schwa", "SCHWA": "schwa",
+    "AX": "schwa", "AH": "schwa", "AH0": "schwa", "AXR": "schwa", "SCHWA": "schwa",
 }
 
 class VisemeMapper:

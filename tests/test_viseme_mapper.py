@@ -24,14 +24,18 @@ def test_viseme_merging():
         PhonemeEvent(phoneme="AA", start_time=0.4, end_time=0.6),
         PhonemeEvent(phoneme="M", start_time=0.6, end_time=0.8),
     ]
+    # P->PP, B->PP (merged), AA->aa, M->PP (no merge across aa)
     visemes = mapper.map_phonemes(phonemes)
-    assert len(visemes) == 2, f"Expected 2 merged visemes, got {len(visemes)}"
+    assert len(visemes) == 3, f"Expected 3 merged visemes (PP,aa,PP), got {len(visemes)}"
     assert visemes[0].name == "PP"
     assert visemes[0].start_time == 0.0
     assert visemes[0].end_time == 0.4
     assert visemes[1].name == "aa"
     assert visemes[1].start_time == 0.4
-    assert visemes[1].end_time == 0.8
+    assert visemes[1].end_time == 0.6
+    assert visemes[2].name == "PP"
+    assert visemes[2].start_time == 0.6
+    assert visemes[2].end_time == 0.8
     print("  PASS: viseme_merging")
 
 def test_empty_input():
@@ -46,9 +50,10 @@ def test_stress_digit_stripping():
         PhonemeEvent(phoneme="AH0", start_time=0.0, end_time=0.1),
         PhonemeEvent(phoneme="AH1", start_time=0.1, end_time=0.2),
     ]
+    # After stripping stress digits, AH0/AH1 become "AH" which isn't in the map
     visemes = mapper.map_phonemes(phonemes)
     assert len(visemes) == 1
-    assert visemes[0].name == "schwa"
+    assert visemes[0].name == "schwa", f"Expected schwa, got {visemes[0].name}"
     print("  PASS: stress_digit_stripping")
 
 def test_unknown_phoneme():

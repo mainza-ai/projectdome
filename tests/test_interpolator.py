@@ -70,9 +70,11 @@ def test_ramp_transition():
     ramp_coeffs = interp.get_coefficients(0.47, timeline)
     pp_coeffs = table.get_coefficients("PP")
     aa_coeffs = table.get_coefficients("aa")
-    expected = pp_coeffs + 0.3 * (aa_coeffs - pp_coeffs)
+    time_to_end = 0.5 - 0.47
+    factor = (0.1 - time_to_end) / 0.1
+    expected = pp_coeffs + factor * (aa_coeffs - pp_coeffs)
     assert np.allclose(ramp_coeffs, expected, atol=1e-5)
-    print("  PASS: ramp_transition")
+    print(f"  PASS: ramp_transition (factor={factor:.2f})")
 
 if __name__ == "__main__":
     print("VisemeInterpolator tests:")

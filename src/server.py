@@ -20,8 +20,8 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import numpy as np
 import torch
 from src.alignment.pipeline import AcousticPipeline
-from src.animation.emotion_blender import EmotionBlender
-from gnm.shape.semantic_sampler import IdentitySampler, Gender, Ethnicity, Expression
+from src.animation.emotion_blender import EmotionBlender, _SilentIdentitySampler
+from gnm.shape.semantic_sampler import Gender, Ethnicity, Expression
 from src.training.model import SpeechToCoefficientsModel
 
 logging.basicConfig(
@@ -59,8 +59,10 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-    def log_request(self, method, path, status, duration_ms):
-        log.info(f"{method} {path} -> {status} ({duration_ms:.0f}ms)")
+    def log_request(self, code='-', size='-'):
+        method = getattr(self, 'command', '?')
+        path = getattr(self, 'path', '?')
+        log.info(f"{method} {path} -> {code}")
 
     def serve_file(self, file_path, content_type):
         if not os.path.exists(file_path):
@@ -78,7 +80,6 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(f.read())
 
     def do_GET(self):
-        t0 = time.time()
         try:
             url_path = urllib.parse.urlparse(self.path).path
             if url_path == "/" or url_path == "":
@@ -102,7 +103,6 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             self.wfile.write(b"Internal server error")
-        self.log_request("GET", self.path, 200, (time.time() - t0) * 1000)
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -112,7 +112,6 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        t0 = time.time()
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
@@ -123,7 +122,6 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps({"error": f"Invalid JSON: {e}"}).encode('utf-8'))
-            self.log_request("POST", self.path, 400, (time.time() - t0) * 1000)
             return
 
         self.send_response(200)
@@ -244,7 +242,7 @@ def run_server(port=8000):
     log.info("=== Initializing Server Engines ===")
     pipeline = AcousticPipeline()
     blender = EmotionBlender()
-    identity_sampler = IdentitySampler()
+    identity_sampler = _SilentIdentitySampler()
     log.info("=== Server Engines Initialized ===")
     server_address = ('', port)
     httpd = HTTPServer(server_address, GnmHTTPRequestHandler)

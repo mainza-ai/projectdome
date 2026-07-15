@@ -1,7 +1,8 @@
+from __future__ import annotations
 import numpy as np
 from typing import List
-from src.alignment.viseme_mapper import VisemeEvent
 from src.animation.viseme_table import VisemeTable
+from src.alignment.viseme_mapper import VisemeEvent
 
 class VisemeInterpolator:
     def __init__(self, viseme_table: VisemeTable, ramp_duration: float = 0.04):
