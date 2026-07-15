@@ -6,17 +6,18 @@ import urllib.parse
 import io
 import gc
 import time
+import re
 import logging
 import traceback
 import soundfile as sf
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from functools import wraps
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
+import numpy as np
 import torch
 from src.alignment.pipeline import AcousticPipeline
 from src.animation.emotion_blender import EmotionBlender
@@ -163,6 +164,56 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                 e_enum = Ethnicity(ethnicity)
                 coeffs = identity_sampler.sample_identity(g_enum, e_enum, num_samples=1)[0]
                 response = {"coefficients": coeffs.tolist()}
+
+            elif self.path == "/api/identity/info":
+                n = int(data.get("n", 10))
+                names = [f"identity_{i:03d}" for i in range(min(n, 253))]
+                response = {
+                    "identity_dim": 253,
+                    "component_names": names,
+                    "num_components": min(n, 253),
+                }
+
+            elif self.path == "/api/speak/stream":
+                text = data.get("text", "")
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+                if not sentences:
+                    sentences = [text]
+                log.info(f"/api/speak/stream: {len(sentences)} sentence(s)")
+                chunks = []
+                total_audio = None
+                total_sr = None
+                all_visemes = []
+                offset = 0.0
+                for i, sentence in enumerate(sentences):
+                    chunk_audio, chunk_sr, chunk_visemes = pipeline.process(sentence)
+                    for v in chunk_visemes:
+                        v.start_time += offset
+                        v.end_time += offset
+                    all_visemes.extend(chunk_visemes)
+                    if total_audio is None:
+                        total_audio = chunk_audio
+                        total_sr = chunk_sr
+                    else:
+                        total_audio = np.concatenate([total_audio, chunk_audio])
+                    offset = len(total_audio) / total_sr if total_sr else offset
+                    wav_io = io.BytesIO()
+                    sf.write(wav_io, chunk_audio, chunk_sr, format='WAV')
+                    chunk_b64 = base64.b64encode(wav_io.getvalue()).decode('utf-8')
+                    chunks.append({
+                        "index": i,
+                        "audio_base64": chunk_b64,
+                        "duration": len(chunk_audio) / chunk_sr,
+                    })
+                wav_io = io.BytesIO()
+                sf.write(wav_io, total_audio, total_sr, format='WAV')
+                audio_base64 = base64.b64encode(wav_io.getvalue()).decode('utf-8')
+                response = {
+                    "audio_base64": audio_base64,
+                    "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in all_visemes],
+                    "chunks": chunks,
+                    "num_sentences": len(sentences),
+                }
 
             elif self.path == "/api/blink":
                 left_wink = blender.sampler.sample_expression(Expression.WINK_LEFT, num_samples=1)[0]

@@ -405,7 +405,8 @@ speakBtn.addEventListener("click", async () => {
     playPauseBtn.disabled = true;
     try {
         const styleSelect = document.getElementById("style-select");
-        const response = await fetch("/api/speak", {
+        const endpoint = text.length > 80 ? "/api/speak/stream" : "/api/speak";
+        const response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -426,6 +427,9 @@ speakBtn.addEventListener("click", async () => {
             playPauseBtn.innerText = "Play Audio";
             activeUtterancePlaying = false;
         };
+        if (data.chunks) {
+            console.log(`Streamed ${data.num_sentences} sentence chunks.`);
+        }
     } catch (e) {
         console.error("Synthesize API failed", e);
     } finally {
@@ -525,6 +529,66 @@ window.addEventListener('resize', () => {
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+let pcaSlidersInitialized = false;
+let pcaSliderValues = new Float32Array(253).fill(0.0);
+
+async function initPcaSliders() {
+    if (pcaSlidersInitialized) return;
+    try {
+        const res = await fetch("/api/identity/info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ n: 10 })
+        });
+        const info = await res.json();
+        const container = document.getElementById("pca-sliders-container");
+        container.innerHTML = "";
+        for (let i = 0; i < info.num_components; i++) {
+            const name = info.component_names[i];
+            const div = document.createElement("div");
+            div.className = "intensity-slider";
+            div.style.marginBottom = "4px";
+            const label = document.createElement("label");
+            label.style.minWidth = "90px";
+            label.style.fontSize = "0.75rem";
+            label.textContent = name;
+            const slider = document.createElement("input");
+            slider.type = "range";
+            slider.min = "-3";
+            slider.max = "3";
+            slider.step = "0.05";
+            slider.value = "0";
+            const val = document.createElement("span");
+            val.style.fontSize = "0.75rem";
+            val.style.minWidth = "20px";
+            val.textContent = "0";
+            slider.addEventListener("input", (idx => {
+                const v = parseFloat(slider.value);
+                pcaSliderValues[idx] = v;
+                currentIdentityCoeffs[idx] = v;
+                val.textContent = v.toFixed(1);
+            }).bind(null, i));
+            div.appendChild(label);
+            div.appendChild(slider);
+            div.appendChild(val);
+            container.appendChild(div);
+        }
+        pcaSlidersInitialized = true;
+        console.log("Identity PCA sliders initialized.");
+    } catch (e) {
+        console.warn("Failed to load PCA sliders", e);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const details = document.querySelector("#identity-pca-sliders details");
+    if (details) {
+        details.addEventListener("toggle", () => {
+            if (details.open) initPcaSliders();
+        });
+    }
 });
 
 window.onload = loadGnmBuffers;

@@ -4,20 +4,22 @@ import numpy as np
 from typing import Dict
 
 VISEMES = [
-    "IDLE",   # Silence / rest
-    "PP",     # Bilabial: P, B, M
-    "FF",     # Labiodental: F, V
-    "TH",     # Dental: TH, DH
-    "DD",     # Alveolar: T, D, N, L
-    "CH",     # Postalveolar: SH, ZH, CH, JH
-    "kk",     # Velar/Glottal: K, G, NG, HH
-    "SS",     # Sibilant: S, Z
-    "RR",     # Retroflex: R, ER
-    "aa",     # Open vowels: AA, AE, AH
-    "EE",     # Front vowels: EH, IH, IY, AY, EY
-    "OO",     # Rounded vowels: UW, UH, OW, OY, AW
-    "schwa"   # Neutral: AX, AH0
+    "IDLE",
+    "PP",
+    "FF",
+    "TH",
+    "DD",
+    "CH",
+    "kk",
+    "SS",
+    "RR",
+    "aa",
+    "EE",
+    "OO",
+    "schwa"
 ]
+
+TONGUE_OFFSET = 150
 
 class VisemeTable:
     def __init__(self, filepath: str = "data/viseme_table.json"):
@@ -28,37 +30,55 @@ class VisemeTable:
             self.load()
 
     def initialize_defaults(self):
-        """Initialize default 182-dimensional coefficients for each viseme."""
-        # 182 dims: 150 for lower_face_region, 32 for tongue
         for name in VISEMES:
             self.table[name] = np.zeros(182, dtype=np.float32)
 
-        # Set simple PCA-based placeholders for visible deformations
-        # In GNM:
-        # Index 0-149 of our 182 vector maps to lower_face_region_000 to lower_face_region_149.
-        # Index 150-181 maps to tongue_mean + tongue_000 to tongue_030.
-        
-        # open mouth / jaw drop
-        self.table["aa"][0] = 1.2    # Lower face component 0
+        self.table["aa"][0] = 1.2
         self.table["aa"][1] = -0.5
-        
-        # pucker / rounded lips
+
         self.table["OO"][0] = 0.5
-        self.table["OO"][1] = 1.5    # Lower face component 1
-        
-        # wide smile/lips spread
-        self.table["EE"][2] = 1.5    # Lower face component 2
-        
-        # closed lips pressed (PP)
+        self.table["OO"][1] = 1.5
+        self.table["OO"][TONGUE_OFFSET] = -0.3
+
+        self.table["EE"][2] = 1.5
+        self.table["EE"][TONGUE_OFFSET + 1] = 0.4
+
         self.table["PP"][0] = -0.5
-        self.table["PP"][3] = 1.0    # Lower face component 3
-        
-        # dental (TH) - tongue forward
+        self.table["PP"][3] = 1.0
+
+        self.table["FF"][3] = 0.5
+        self.table["FF"][TONGUE_OFFSET + 2] = 0.3
+
         self.table["TH"][0] = 0.3
-        self.table["TH"][150] = 1.0  # tongue_mean index
+        self.table["TH"][TONGUE_OFFSET] = 1.0
+        self.table["TH"][TONGUE_OFFSET + 1] = 0.8
+        self.table["TH"][TONGUE_OFFSET + 2] = 0.3
+
+        self.table["DD"][1] = 0.5
+        self.table["DD"][TONGUE_OFFSET] = 0.6
+        self.table["DD"][TONGUE_OFFSET + 1] = 0.7
+
+        self.table["CH"][TONGUE_OFFSET] = 0.5
+        self.table["CH"][TONGUE_OFFSET + 2] = 0.6
+        self.table["CH"][TONGUE_OFFSET + 3] = 0.4
+
+        self.table["kk"][2] = -0.3
+        self.table["kk"][TONGUE_OFFSET + 1] = 0.7
+        self.table["kk"][TONGUE_OFFSET + 2] = 0.5
+
+        self.table["SS"][TONGUE_OFFSET] = 0.3
+        self.table["SS"][TONGUE_OFFSET + 1] = 0.5
+        self.table["SS"][TONGUE_OFFSET + 2] = 0.3
+
+        self.table["RR"][TONGUE_OFFSET] = 0.6
+        self.table["RR"][TONGUE_OFFSET + 1] = 0.4
+        self.table["RR"][TONGUE_OFFSET + 2] = 0.5
+        self.table["RR"][TONGUE_OFFSET + 3] = 0.3
+
+        self.table["schwa"][0] = 0.2
+        self.table["schwa"][TONGUE_OFFSET] = 0.3
 
     def get_coefficients(self, name: str) -> np.ndarray:
-        """Return 182-dim coefficient vector for the given viseme name."""
         return self.table.get(name, self.table["IDLE"])
 
     def set_coefficients(self, name: str, coeffs: np.ndarray):
@@ -79,7 +99,6 @@ class VisemeTable:
     def save(self):
         os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
         try:
-            # Convert numpy arrays to lists for JSON serialization
             data = {name: coeffs.tolist() for name, coeffs in self.table.items()}
             with open(self.filepath, 'w') as f:
                 json.dump(data, f, indent=2)
