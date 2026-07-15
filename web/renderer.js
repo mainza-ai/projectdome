@@ -185,28 +185,23 @@ function initScene() {
     const dist = maxDim * margin / (2 * Math.tan(vFov / 2));
     console.log('MaxDim:', maxDim.toFixed(4), 'Dist:', dist.toFixed(4));
 
-    // BUG: OrbitControls constructor calls update() internally, locking spherical
-    // coords relative to default target (0,0,0). If we create controls with camera
-    // already centered on head, the spherical offset includes the head center
-    // offset from origin. When we then set controls.target = center, the camera
-    // position doubles the offset.
-    //
-    // Fix: place camera at (0,0,dist) BEFORE creating controls (so spherical
-    // offset is just +Z). AFTER controls creation, set target to head center —
-    // the camera then becomes center + (0,0,dist) = (cx, cy, cz+dist).
     camera = new THREE.PerspectiveCamera(40, containerAspect, 0.01, dist * 10);
-    camera.position.set(0, 0, dist);
-    camera.lookAt(0, 0, 0);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
+    // OrbitControls r128 constructor calls update() internally, locking spherical
+    // coords relative to default target (0,0,0). Workaround: set both target AND
+    // camera.position to the desired final state before the first manual update(),
+    // mirroring the GNM jupyter viewer pattern.
+    camera.position.set(0, 0, dist);
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.target.copy(center);
+    camera.position.copy(center).add(new THREE.Vector3(0, 0, dist));
     controls.update();
 
     console.log('Camera pos:', camera.position.toArray().map(v=>v.toFixed(4)));
