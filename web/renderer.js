@@ -178,35 +178,24 @@ function initScene() {
     console.log('Head center:', center.toArray().map(v=>v.toFixed(4)));
     console.log('Head size:', size.toArray().map(v=>v.toFixed(4)));
 
-    const containerAspect = container.clientWidth / container.clientHeight;
-    const vFov = 40 * Math.PI / 180;
-    const margin = 1.5;
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const dist = maxDim * margin / (2 * Math.tan(vFov / 2));
-    console.log('MaxDim:', maxDim.toFixed(4), 'Dist:', dist.toFixed(4));
-
-    camera = new THREE.PerspectiveCamera(40, containerAspect, 0.01, dist * 10);
+    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(0, 0.23, 0.45);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
-    // OrbitControls r128 constructor calls update() internally, locking spherical
-    // coords relative to default target (0,0,0). Workaround: set both target AND
-    // camera.position to the desired final state before the first manual update(),
-    // mirroring the GNM jupyter viewer pattern.
-    camera.position.set(0, 0, dist);
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.target.copy(center);
-    camera.position.copy(center).add(new THREE.Vector3(0, 0, dist));
-    controls.update();
+    controls.target.set(0, 0.23, 0.03);
 
-    console.log('Camera pos:', camera.position.toArray().map(v=>v.toFixed(4)));
-    console.log('Camera target:', controls.target.toArray().map(v=>v.toFixed(4)));
-    console.log('Distance:', camera.position.distanceTo(controls.target).toFixed(4));
+    console.log('BB center:', center.toArray().map(v=>v.toFixed(4)));
+    console.log('BB size:', size.toArray().map(v=>v.toFixed(4)));
+    console.log('Camera:', camera.position.toArray().map(v=>v.toFixed(4)));
+    console.log('Target:', controls.target.toArray().map(v=>v.toFixed(4)));
 
     const amb = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(amb);
@@ -224,7 +213,7 @@ function initScene() {
     if (vertColors) geometry.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
 
     const mat = new THREE.MeshStandardMaterial({
-        roughness: 0.4, metalness: 0.05, flatShading: false,
+        roughness: 0.4, metalness: 0.1, flatShading: false,
         side: THREE.DoubleSide, vertexColors: !!vertColors,
     });
 
