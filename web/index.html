@@ -44,7 +44,7 @@
             <div class="control-group">
                 <h3>🗣️ Speech Interface</h3>
                 <div class="speech-inputs">
-                    <input type="text" id="speech-text" value="Hello world, welcome to Project Dome."
+                    <input type="text" id="speech-text" value="Hello world, welcome to Milimo Quantum."
                         placeholder="Type speech text here...">
                     <button id="speak-btn">Speak</button>
                 </div>
@@ -55,7 +55,8 @@
                 <!-- Speaking Style dropdown -->
                 <div class="intensity-slider" style="margin-top: 14px;">
                     <label for="style-select">Speaking Style:</label>
-                    <select id="style-select" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
+                    <select id="style-select"
+                        style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
                         <option value="0">Style 0 (Dynamic/TA)</option>
                         <option value="1">Style 1</option>
                         <option value="2">Style 2</option>
@@ -119,9 +120,12 @@
                         <input type="range" id="gaze-pitch" min="-15" max="15" step="1" value="0">
                         <span id="gaze-p-val">0°</span>
                     </div>
-                    <div class="intensity-slider" style="margin-top: 6px; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 10px;">
-                        <input type="checkbox" id="gaze-auto" checked style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;">
-                        <label for="gaze-auto" style="cursor: pointer; font-size: 0.85rem; font-weight: 600;">Keep Eye Contact (Track Camera)</label>
+                    <div class="intensity-slider"
+                        style="margin-top: 6px; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 10px;">
+                        <input type="checkbox" id="gaze-auto" checked
+                            style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;">
+                        <label for="gaze-auto" style="cursor: pointer; font-size: 0.85rem; font-weight: 600;">Keep Eye
+                            Contact (Track Camera)</label>
                     </div>
                 </div>
             </div>
@@ -132,24 +136,31 @@
                 <div class="emotion-controls">
                     <div class="intensity-slider">
                         <label for="id-gender" style="min-width: 100px;">Gender:</label>
-                        <select id="id-gender" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
+                        <select id="id-gender"
+                            style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
                             <option value="0">Female</option>
                             <option value="1">Male</option>
                         </select>
                     </div>
                     <div class="intensity-slider">
                         <label for="id-ethnicity" style="min-width: 100px;">Ethnicity:</label>
-                        <select id="id-ethnicity" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
+                        <select id="id-ethnicity"
+                            style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none;">
                             <option value="2">White</option>
                             <option value="1">Asian</option>
                             <option value="3">Black</option>
                             <option value="0">Middle Eastern</option>
                         </select>
                     </div>
-                    <button id="random-id-btn" style="width: 100%; margin-top: 6px; background-color: var(--google-green); box-shadow: 0 2px 6px rgba(52, 168, 83, 0.15);">Generate Identity</button>
-                    <div id="identity-pca-sliders" style="margin-top: 12px; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 10px;">
+                    <button id="random-id-btn"
+                        style="width: 100%; margin-top: 6px; background-color: var(--google-green); box-shadow: 0 2px 6px rgba(52, 168, 83, 0.15);">Generate
+                        Identity</button>
+                    <div id="identity-pca-sliders"
+                        style="margin-top: 12px; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 10px;">
                         <details>
-                            <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">PCA Components (Fine-Tune)</summary>
+                            <summary
+                                style="cursor: pointer; font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">
+                                PCA Components (Fine-Tune)</summary>
                             <div id="pca-sliders-container"></div>
                         </details>
                     </div>

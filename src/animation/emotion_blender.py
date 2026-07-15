@@ -85,7 +85,11 @@ class EmotionBlender:
         assert len(emotion_coeffs) == 383, f"Emotion coefficients must be 383-dimensional, got {len(emotion_coeffs)}"
         final_coeffs = np.zeros(383, dtype=np.float32)
         final_coeffs[0:200] = emotion_coeffs[0:200]
-        final_coeffs[200:350] = speech_coeffs[0:150] + 0.3 * emotion_coeffs[200:350]
+        speech_lower = speech_coeffs[0:150]
+        emotion_lower = emotion_coeffs[200:350] * 0.15
+        speech_mag = np.abs(speech_lower)
+        emotion_mag = np.abs(emotion_lower)
+        final_coeffs[200:350] = np.where(speech_mag > emotion_mag, speech_lower, emotion_lower)
         final_coeffs[350:382] = speech_coeffs[150:182]
         final_coeffs[382] = emotion_coeffs[382]
         return final_coeffs

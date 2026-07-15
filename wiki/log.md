@@ -51,4 +51,7 @@ Found and fixed two root causes of the mouth-not-moving bug:
 1. **Web renderer bug**: `finalCoeffs` was overwriting blended speech coefficients with emotion upper-face values (line 352-353 in renderer.js). Fix: use `blended` directly.
 2. **Wrong viseme coefficients**: Assumed PCA components corresponded to anatomical jaw opening — but `lower_face_region_000` (set to 1.2 for "aa") actually raises the upper lip, not opens the jaw. Used GNM model probing to discover that `lower_face_region_001` (index 1 in 182-dim space) is the true jaw-opening component. Rebuilt entire viseme table with verified GNM-compatible coefficients. Verified: "aa" now produces lip center downward displacement of -0.011 units.
 
+## [2026-07-15] fix | Emotion/speech blend conflict
+CVAE emotion coefficients span the entire lower face (up to 4.7 magnitude for BLOW), conflicting with speech visemes. Fixed blend to use per-channel magnitude comparison: where speech energy > 0.15*emotion energy, speech wins; otherwise emotion tints the lower face subtly. Upper face (0-199) and pupils remain full emotion. Verified: 26 tests pass, all endpoints working.
+
 Full audit after production execution: 12 items fixed, 10 remaining gaps identified (A1-A7 critical, B1-B6 quality, C1-C4 performance), 5 missing features documented. Key fixes: eager import chains, Keras warnings fully suppressed, all 25 tests passing, server starts cleanly.

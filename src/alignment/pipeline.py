@@ -29,7 +29,7 @@ if __name__ == "__main__":
     import soundfile as sf
 
     parser = argparse.ArgumentParser(description="Test Acoustic Pipeline (Piper + Wav2TextGrid)")
-    parser.add_argument("--text", type=str, default="Hello world, welcome to Project Dome.", help="Text to speak")
+    parser.add_argument("--text", type=str, default="Hello world, welcome to Milimo Quantum.", help="Text to speak")
     parser.add_argument("--out", type=str, default="output/test_speech.wav", help="Output WAV file path")
     args = parser.parse_args()
 

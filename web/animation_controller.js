@@ -96,7 +96,11 @@ class AnimationController {
     blend(speechCoeffs, emotionCoeffs) {
         const blended = new Float32Array(383);
         for (let i = 0; i < 200; i++) blended[i] = emotionCoeffs[i];
-        for (let i = 0; i < 150; i++) blended[200 + i] = speechCoeffs[i] + 0.3 * emotionCoeffs[200 + i];
+        for (let i = 0; i < 150; i++) {
+            const s = speechCoeffs[i];
+            const e = emotionCoeffs[200 + i] * 0.15;
+            blended[200 + i] = Math.abs(s) > Math.abs(e) ? s : e;
+        }
         for (let i = 0; i < 32; i++) blended[350 + i] = speechCoeffs[150 + i];
         blended[382] = emotionCoeffs[382];
         return blended;
