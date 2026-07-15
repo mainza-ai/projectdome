@@ -38,3 +38,7 @@ GPU (TSL vertex shader):
 ## Prototyping
 
 Start in Blender's real-time viewport with GNM Head Importer before committing to a web renderer.
+
+## Implementation
+
+See [[web-renderer|Web Renderer]] for the current Three.js implementation: CPU-side buffer loading, sparse deformation, LBS, blink simulation, and render loop.

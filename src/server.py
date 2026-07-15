@@ -12,10 +12,40 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.alignment.pipeline import AcousticPipeline
 from src.animation.emotion_blender import EmotionBlender
+from gnm.shape.semantic_sampler import IdentitySampler, Gender, Ethnicity, Expression
+import torch
+import torchaudio
+from src.training.model import SpeechToCoefficientsModel
 
 # Global pipeline instances
 pipeline = None
 blender = None
+identity_sampler = None
+neural_model = None
+device = None
+
+def init_neural_model():
+    global neural_model, device
+    checkpoint_path = "voca/model/checkpoints/best_model.pt"
+    if os.path.exists(checkpoint_path):
+        try:
+            # We set MPS fallback flag to ensure linear interpolation op fallback to CPU behaves correctly
+            import os
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            
+            device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+            print(f"[Server] Loading SpeechToCoefficients model on {device}...")
+            
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            neural_model = SpeechToCoefficientsModel().to(device)
+            neural_model.load_state_dict(checkpoint["model_state_dict"])
+            neural_model.eval()
+            print("[Server] SpeechToCoefficients model loaded successfully.")
+        except Exception as e:
+            print(f"[Server] Failed to load neural model: {e}")
+            neural_model = None
+    else:
+        print("[Server] SpeechToCoefficients checkpoint not found. fallback to Path A.")
 
 class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -44,8 +74,8 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
         if url_path == "/" or url_path == "":
             url_path = "/index.html"
 
-        # Serve from 'web/' folder or 'data/' folder
-        if url_path.startswith("/data/"):
+        # Serve from 'web/', 'data/', or 'assets/' folder
+        if url_path.startswith("/data/") or url_path.startswith("/assets/"):
             local_path = url_path.lstrip("/")
         else:
             local_path = os.path.join("web", url_path.lstrip("/"))
@@ -63,6 +93,12 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             content_type = "application/octet-stream"
         elif local_path.endswith(".wav"):
             content_type = "audio/wav"
+        elif local_path.endswith(".png"):
+            content_type = "image/png"
+        elif local_path.endswith(".jpg") or local_path.endswith(".jpeg"):
+            content_type = "image/jpeg"
+        elif local_path.endswith(".gif"):
+            content_type = "image/gif"
         else:
             content_type = "text/plain"
 
@@ -91,8 +127,9 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             text = data.get("text", "")
             emotion = data.get("emotion", None)
             intensity = data.get("intensity", 1.0)
+            style_id = int(data.get("style_id", 0)) # style conditional conditioning index
             
-            print(f"[Server] API /api/speak request: '{text}' (emotion: {emotion}, intensity: {intensity})")
+            print(f"[Server] API /api/speak request: '{text}' (emotion: {emotion}, intensity: {intensity}, style: {style_id})")
             
             # Execute acoustic pipeline
             audio, sr, visemes = pipeline.process(text)
@@ -118,13 +155,38 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                 "coefficients": coeffs.tolist()
             }
 
+        elif self.path == "/api/identity":
+            gender = int(data.get("gender", 0))
+            ethnicity = int(data.get("ethnicity", 2))
+            print(f"[Server] API /api/identity request: gender={gender}, ethnicity={ethnicity}")
+            
+            g_enum = Gender(gender)
+            e_enum = Ethnicity(ethnicity)
+            
+            # Generate 253 identity coefficients
+            coeffs = identity_sampler.sample_identity(g_enum, e_enum, num_samples=1)[0]
+            response = {
+                "coefficients": coeffs.tolist()
+            }
+
+        elif self.path == "/api/blink":
+            print("[Server] API /api/blink request")
+            left_wink = blender.sampler.sample_expression(Expression.WINK_LEFT, num_samples=1)[0]
+            right_wink = blender.sampler.sample_expression(Expression.WINK_RIGHT, num_samples=1)[0]
+            # Blend left and right winks to create a full closed eyelid blink
+            blink_coeffs = (left_wink + right_wink).tolist()
+            response = {
+                "coefficients": blink_coeffs
+            }
+
         self.wfile.write(json.dumps(response).encode('utf-8'))
 
 def run_server(port=8000):
-    global pipeline, blender
+    global pipeline, blender, identity_sampler
     print("=== Initializing Server Engines ===")
     pipeline = AcousticPipeline()
     blender = EmotionBlender()
+    identity_sampler = IdentitySampler()
     print("=== Server Engines Initialized ===")
 
     server_address = ('', port)

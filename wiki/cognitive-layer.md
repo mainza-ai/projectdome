@@ -37,3 +37,7 @@ The cognitive layer emits two parallel outputs:
 2. **Affect tags** (e.g. `[HAPPY]`, `[SURPRISE]`) → fed to GNM's ExpressionSampler for non-speech facial expression
 
 Both streams are synchronized so expressions align with spoken words.
+
+## Implementation
+
+See [[mind-llm|Mind LLM Engine]] for the actual implementation: provider protocol, LocalMindProvider (OpenAI-compatible API client), and ConversationContext (dialogue history).

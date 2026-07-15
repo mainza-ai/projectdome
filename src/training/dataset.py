@@ -82,10 +82,38 @@ class VocasetDataset(Dataset):
         )
         log_mel = log_mel_resampled.squeeze(0).transpose(0, 1) # (seq_len, n_mels)
 
+        # Parse speaker name and get index
+        # Format is FaceTalk_YYMMDD_XXXXX_TA_sentence.npz
+        filename = os.path.basename(self.files[idx])
+        parts = filename.split("_")
+        speaker_name = "_".join(parts[:5])
+        
+        # 12 VOCASET speakers in alphabetical order
+        voca_speakers = [
+            'FaceTalk_170725_00137_TA',
+            'FaceTalk_170728_03272_TA',
+            'FaceTalk_170731_00024_TA',
+            'FaceTalk_170809_00138_TA',
+            'FaceTalk_170811_03274_TA',
+            'FaceTalk_170811_03275_TA',
+            'FaceTalk_170904_00128_TA',
+            'FaceTalk_170904_03276_TA',
+            'FaceTalk_170908_03277_TA',
+            'FaceTalk_170912_03278_TA',
+            'FaceTalk_170913_03279_TA',
+            'FaceTalk_170915_00223_TA'
+        ]
+        
+        try:
+            speaker_idx = voca_speakers.index(speaker_name)
+        except ValueError:
+            speaker_idx = 0 # Default fallback
+            
         return {
             "audio_features": log_mel,            # (seq_len, 80)
             "coefficients": torch.tensor(coeffs, dtype=torch.float32),  # (seq_len, 182)
-            "seq_len": seq_len
+            "seq_len": seq_len,
+            "speaker_id": speaker_idx
         }
 
 def collate_fn(batch):
@@ -93,13 +121,16 @@ def collate_fn(batch):
     audio_features = [item["audio_features"] for item in batch]
     coefficients = [item["coefficients"] for item in batch]
     seq_lens = [item["seq_len"] for item in batch]
+    speaker_ids = [item["speaker_id"] for item in batch]
 
     # Pad sequences
     audio_padded = torch.nn.utils.rnn.pad_sequence(audio_features, batch_first=True, padding_value=-20.0)
     coeffs_padded = torch.nn.utils.rnn.pad_sequence(coefficients, batch_first=True, padding_value=0.0)
+    speaker_ids = torch.tensor(speaker_ids, dtype=torch.long)
 
     return {
-        "audio_features": audio_padded,      # (batch, max_len, 80)
-        "coefficients": coeffs_padded,        # (batch, max_len, 182)
-        "seq_lens": torch.tensor(seq_lens)
+        "audio_features": audio_padded,
+        "coefficients": coeffs_padded,
+        "seq_lens": torch.tensor(seq_lens),
+        "speaker_ids": speaker_ids
     }

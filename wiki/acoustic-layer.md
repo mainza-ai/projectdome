@@ -44,3 +44,7 @@ from kokoro import KPipeline
 pipeline = KPipeline(lang_code='a')
 audio, phonemes = pipeline(text, voice='af_heart')
 ```
+
+## Implementation
+
+See [[voice-tts|Voice TTS Provider]] for the current Piper-based implementation: provider protocol, auto-download, and synthesis pipeline.

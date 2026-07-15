@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 from gnm.shape.gnm_numpy import GNM
 from gnm.shape.data.versions.gnm_specs import GNMMajorVersion, GNMVariant
-from gnm.shape.fitting_utils.project_on_pca import project_on_linear_vertex_basis
+from gnm.shape.fitting_utils.project_on_pca import project_on_linear_vertex_basis, PCABasisProjection
 
 def compute_icp_alignment(src_mesh, tgt_mesh, max_iterations=50):
     """Compute optimal rotation R, translation t, and closest vertex indices mapping src to tgt."""
@@ -110,6 +110,15 @@ def main():
         align = speaker_alignments[speaker]
         R, t, speaker_indices = align["R"], align["t"], align["indices"]
         
+        # Precompute the projector for this speaker's aligned vertices subset
+        projector = PCABasisProjection(
+            mean_vertex_positions=gnm_mean[speaker_indices],
+            vertex_basis=gnm_basis[:, speaker_indices],
+            vertex_indices=None,
+            regularization=1e-3,
+            compute_reconstruction=False
+        )
+        
         sentences = seq_to_idx[speaker].keys()
         print(f"Processing speaker: {speaker} ({len(sentences)} sentences)")
         
@@ -122,33 +131,23 @@ def main():
             flame_meshes = data_verts[frame_indices] # shape (seq_len, 5023, 3)
             
             # Retrieve audio
+            if sentence not in raw_audio.get(speaker, {}):
+                print(f"\nWarning: Skipping {speaker} {sentence} because audio is missing in raw_audio_fixed.pkl.")
+                continue
             audio_item = raw_audio[speaker][sentence]
             audio_data = audio_item["audio"]
             sample_rate = audio_item["sample_rate"]
             
-            # Run projection frame-by-frame
-            seq_coeffs = []
-            for frame_mesh in flame_meshes:
-                # Align frame mesh to GNM space
-                aligned_mesh = (frame_mesh @ R.T) + t
-                
-                # Project on GNM expression basis
-                res = project_on_linear_vertex_basis(
-                    aligned_mesh,
-                    gnm_mean,
-                    gnm_basis,
-                    indices=speaker_indices,
-                    regularization=1e-3, # slight regularization
-                    compute_reconstruction=False
-                )
-                
-                # res.coefficients has shape (1, 383)
-                seq_coeffs.append(res.coefficients.squeeze(0))
-                
-            seq_coeffs = np.array(seq_coeffs, dtype=np.float32) # shape (seq_len, 383)
+            # Align the entire sequence of meshes in a single vectorized call
+            aligned_meshes = (flame_meshes @ R.T) + t # shape (seq_len, 5023, 3)
+            
+            # Project the entire sequence onto GNM expression basis in one fast batch call
+            res = projector(aligned_meshes)
+            
+            # res.coefficients has shape (seq_len, 383)
+            seq_coeffs = res.coefficients.astype(np.float32)
             
             # Extract 182 speech coefficients (lower face index 200-349 & tongue index 350-381)
-            # Index 200:382 corresponds to GNM channels 200 to 381
             speech_coeffs = seq_coeffs[:, 200:382] # shape (seq_len, 182)
             
             # Save reprojected item

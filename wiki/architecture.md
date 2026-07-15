@@ -38,9 +38,15 @@ Text Input
 
 ## Layer details
 
-- [[cognitive-layer|Cognitive Layer]] — LLM orchestration
-- [[acoustic-layer|Acoustic Layer]] — TTS synthesis
-- [[temporal-alignment|Temporal Alignment]] — phonetic forced alignment
+- [[cognitive-layer|Cognitive Layer]] — design overview (Qwen3, Ollama)
+- [[mind-llm|Mind LLM Engine]] — implementation (provider protocol, LocalMindProvider)
+- [[acoustic-layer|Acoustic Layer]] — TTS design comparison
+- [[voice-tts|Voice TTS Provider]] — implementation (Piper)
+- [[temporal-alignment|Temporal Alignment]] — phonetic forced alignment (concept)
+- [[alignment-pipeline|Alignment Pipeline]] — implementation (Wav2TextGrid, viseme mapper)
 - [[mapping-path-a|Path A — Deterministic Mapping]]
 - [[mapping-path-b|Path B — Neural Regression]]
-- [[rendering|Rendering Layer]]
+- [[animation-engine|Animation Engine]] — viseme table, interpolator, emotion blender, runtime loop
+- [[rendering|Rendering Layer]] — design (WebGPU/TSL)
+- [[web-renderer|Web Renderer]] — implementation (Three.js, LBS)
+- [[web-ui|Web UI]] — HTML, CSS, audio sync

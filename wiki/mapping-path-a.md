@@ -49,3 +49,7 @@ The fastest path to a working lip-sync pipeline. No ML training required — pur
 ## When to use
 
 Phase 1 of the roadmap. Sufficient for an MVP and potentially a v1 product. Path A is the foundation — [[mapping-path-b|Path B]] is the upgrade path.
+
+## Implementation
+
+See [[animation-engine|Animation Engine]] for the actual implementation: VisemeTable (182-dim lookup), VisemeInterpolator (ramp transitions), EmotionBlender (additive blend), and RuntimeLoop (offline frame pipeline).

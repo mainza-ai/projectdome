@@ -9,5 +9,5 @@ Ingested the phased roadmap and data acquisition plan. Establishes Path A (looku
 ## [2026-07-15] wiki | Initial wiki created
 Bootstrapped wiki from dev-docs: index, overview, architecture, all layer pages, tool/dataset/license references, glossary, and roadmap.
 
-## [2026-07-15] update | Implementation Plan Added
-Added the comprehensive bootstrapping, layout, and implementation plan (`wiki/implementation-plan.md`) to the wiki, updating the index catalog.
+## [2026-07-15] wiki | Codebase documentation added
+Added wiki pages for every source module: server, mind-llm, voice-tts, alignment-pipeline, animation-engine, training-pipeline, reprojection, web-renderer, web-ui, gnm-sanity-check, export-tools, and setup. Updated index and log.
