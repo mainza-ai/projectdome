@@ -311,11 +311,10 @@ function deformMesh(expressionCoeffs) {
     const skinningMats = [];
     for (let j = 0; j < nJ; j++) {
         const R = new THREE.Matrix4().extractRotation(worldMats[j]);
-        const Rj = new THREE.Vector3().copy(jidJoints[j]).applyMatrix4(R);
         const T = new THREE.Matrix4().makeTranslation(
-            worldMats[j].elements[12] - Rj.x,
-            worldMats[j].elements[13] - Rj.y,
-            worldMats[j].elements[14] - Rj.z
+            worldMats[j].elements[12],
+            worldMats[j].elements[13],
+            worldMats[j].elements[14]
         );
         T.multiply(R);
         const invBind = new THREE.Matrix4().makeTranslation(-jidJoints[j].x, -jidJoints[j].y, -jidJoints[j].z);
