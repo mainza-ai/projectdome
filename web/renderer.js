@@ -171,16 +171,28 @@ function initScene() {
     bb.getCenter(center);
     const size = new THREE.Vector3();
     bb.getSize(size);
-    const headHeight = size.y;
-    const headCenterY = center.y;
+
+    // Log diagnostic info to console
+    console.log('Head BB min:', bb.min.toArray().map(v=>v.toFixed(4)));
+    console.log('Head BB max:', bb.max.toArray().map(v=>v.toFixed(4)));
+    console.log('Head center:', center.toArray().map(v=>v.toFixed(4)));
+    console.log('Head size:', size.toArray().map(v=>v.toFixed(4)));
 
     const containerAspect = container.clientWidth / container.clientHeight;
-    const vFov = 42;
-    const vFovRad = vFov * Math.PI / 180;
-    const cameraDistance = (headHeight * 1.3) / (2 * Math.tan(vFovRad / 2));
 
-    camera = new THREE.PerspectiveCamera(vFov, containerAspect, 0.1, 100);
-    camera.position.set(0, headCenterY, center.z + cameraDistance);
+    // Position camera using bounding sphere for guaranteed centering
+    const bsphere = new THREE.Sphere();
+    geometry.computeBoundingSphere();
+    bsphere.copy(geometry.boundingSphere);
+    console.log('BSphere center:', bsphere.center.toArray().map(v=>v.toFixed(4)), 'radius:', bsphere.radius.toFixed(4));
+
+    const vFov = 40 * Math.PI / 180;
+    const margin = 1.5;
+    const dist = bsphere.radius * margin / Math.sin(vFov / 2);
+
+    camera = new THREE.PerspectiveCamera(40, containerAspect, dist * 0.01, dist * 10);
+    camera.position.set(bsphere.center.x, bsphere.center.y, bsphere.center.z + dist);
+    camera.lookAt(bsphere.center);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -190,10 +202,12 @@ function initScene() {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 + 0.1;
-    controls.minDistance = 0.2;
-    controls.maxDistance = 1.5;
-    controls.target.copy(center);
+    controls.target.copy(bsphere.center);
+    controls.update();
+
+    console.log('Camera pos:', camera.position.toArray().map(v=>v.toFixed(4)));
+    console.log('Camera target:', controls.target.toArray().map(v=>v.toFixed(4)));
+    console.log('Distance:', camera.position.distanceTo(controls.target).toFixed(4));
 
     const amb = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(amb);
