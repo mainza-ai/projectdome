@@ -76,3 +76,8 @@ Replaced hardcoded camera position with computed framing using THREE.Sphere boun
 CVAE emotion coefficients span the entire lower face (up to 4.7 magnitude for BLOW), conflicting with speech visemes. Fixed blend to use per-channel magnitude comparison: where speech energy > 0.15*emotion energy, speech wins; otherwise emotion tints the lower face subtly. Upper face (0-199) and pupils remain full emotion. Verified: 26 tests pass, all endpoints working.
 
 Full audit after production execution: 12 items fixed, 10 remaining gaps identified (A1-A7 critical, B1-B6 quality, C1-C4 performance), 5 missing features documented. Key fixes: eager import chains, Keras warnings fully suppressed, all 25 tests passing, server starts cleanly.
+
+## [2026-07-15] fix | LBS skinning double-invBind bug + wiki troubleshooting section
+Found and fixed the root cause of "head stuck at bottom of viewport": the LBS skinning matrix formula in `deformMesh()` was computing `T = makeTranslation(jw - R*jr)` instead of `T = makeTranslation(jw)`. The extra `-R*jr` subtraction doubled with `invBind`'s `-jr` to produce `-2*R*jr`, shifting every vertex by `-sum(w_j × joint_position_j)` — approximately −0.207 in Y. Camera was positioned correctly for the unshifted template; the skinning was the silent conflict.
+
+Created troubleshooting.md with 10 documented issues covering: LBS skinning bug, camera distance, buffer loading failures, mouth animation, missing triangles, OrbitControls jumping, emotion blend weakness, audio/viseme sync, server startup, and integration test setup. Updated web-renderer.md with current camera positioning and LBS details.

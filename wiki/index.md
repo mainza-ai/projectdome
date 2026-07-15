@@ -51,6 +51,10 @@ A GNM-based conversational 3D avatar engine ("the arbiter"). $0 budget, fully lo
 
 - [[datasets|Datasets]] — VOCASET, BIWI, Multiface, MEAD
 
+## Operations
+
+- [[troubleshooting|Troubleshooting]] — common issues, root causes, and fixes
+
 ## Sources
 
 - `dev-docs/Project Dome Free Tools Research.md` — state-of-the-art tooling and architectural blueprint
