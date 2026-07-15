@@ -1,0 +1,28 @@
+epochs: 30
+batch_size: 8
+learning_rate: 0.0001
+hidden_dim: 256
+num_layers: 4
+num_heads: 8
+weight_decay: 0.0001
+gradient_clip: 1.0
+
+feature_type: logmel
+feature_kwargs:
+  n_mels: 80
+
+loss_position_weight: 1.0
+loss_velocity_weight: 0.5
+loss_acceleration_weight: 0.2
+loss_edge_weight: 0.1
+loss_vertex_weight: 0.0
+loss_regularization_weight: 0.0001
+
+data_dir: voca/reprojected
+checkpoint_dir: voca/model/checkpoints
+checkpoint_name: best_model.pt
+
+use_vertex_loss: false
+gnm_model_path: vendor/GNM
+
+seed: 42

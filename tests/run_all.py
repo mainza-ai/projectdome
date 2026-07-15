@@ -11,6 +11,7 @@ tests = [
     "test_emotion_blender.py",
     "test_interpolator.py",
     "test_dataset_split.py",
+    "test_gnm_forward.py",
 ]
 
 exit_code = 0

@@ -4,10 +4,12 @@ let metadata = null;
 let meanPositions = null;
 let identityBasis = null;
 let expressionBasis = null;
+let jointIdentityBasis = null;
 let faceIndices = null;
 let skinningWeights = null;
 let jointRegressor = null;
 let vertexBodyParts = null;
+let mirrorIndices = null;
 
 let neckRotation = [0, 0, 0];
 let headRotation = [0, 0, 0];
@@ -21,7 +23,7 @@ let visemeTimeline = null;
 let currentEmotionCoeffs = null;
 let activeUtterancePlaying = false;
 
-const BODY_PART = { SKIN: 0, SCLERAS: 1, IRISES: 2, TEETH: 3, TONGUE: 4, GUM: 5, MOUTH_SOCK: 6 };
+const BODY_PART_SKIN = 0;
 
 function decodeFloat16(uint16) {
     const s = (uint16 & 0x8000) >> 15;
@@ -32,61 +34,94 @@ function decodeFloat16(uint16) {
     return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
 }
 
-function float16BufferToFloat32Array(arrayBuffer) {
-    const uint16View = new Uint16Array(arrayBuffer);
-    const float32Array = new Float32Array(uint16View.length);
-    for (let i = 0; i < uint16View.length; i++) {
-        float32Array[i] = decodeFloat16(uint16View[i]);
-    }
-    return float32Array;
+function float16BufferToFloat32Array(buf) {
+    const u16 = new Uint16Array(buf);
+    const f32 = new Float32Array(u16.length);
+    for (let i = 0; i < u16.length; i++) f32[i] = decodeFloat16(u16[i]);
+    return f32;
 }
 
 function fetchWithStatus(url) {
     return fetch(url).then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}: ${url} not found — run 'python tools/export_basis.py' to generate web buffers`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${url} not found — run 'python tools/export_basis.py'`);
         return r;
     });
+}
+
+function axisAngleToRotationMatrix(r) {
+    const rx = r[0], ry = r[1], rz = r[2];
+    const angle = Math.sqrt(rx * rx + ry * ry + rz * rz);
+    const m = new THREE.Matrix4();
+    if (angle > 1e-8) {
+        m.makeRotationAxis(new THREE.Vector3(rx / angle, ry / angle, rz / angle), angle);
+    }
+    return m;
+}
+
+function buildJointTransforms(joints, rotations, translation, parents) {
+    const nj = joints.length;
+    const localMats = [];
+    const rootTrans = new THREE.Vector3().copy(joints[0]).add(translation);
+    for (let j = 0; j < nj; j++) {
+        const R = axisAngleToRotationMatrix(rotations[j]);
+        const T = new THREE.Matrix4();
+        if (j === 0) {
+            T.makeTranslation(rootTrans.x, rootTrans.y, rootTrans.z);
+        } else {
+            T.makeTranslation(
+                joints[j].x - joints[parents[j]].x,
+                joints[j].y - joints[parents[j]].y,
+                joints[j].z - joints[parents[j]].z
+            );
+        }
+        T.multiply(R);
+        localMats.push(T);
+    }
+    const worldMats = [localMats[0].clone()];
+    for (let j = 1; j < nj; j++) {
+        const pIdx = parents[j] === -1 ? 0 : parents[j];
+        worldMats.push(new THREE.Matrix4().copy(worldMats[pIdx]).multiply(localMats[j]));
+    }
+    return worldMats;
 }
 
 async function loadGnmBuffers() {
     const overlay = document.getElementById("loading-overlay");
     const statusEl = overlay.querySelector("p");
     try {
-        console.log("Loading metadata...");
         const metaRes = await fetchWithStatus("/data/web/metadata.json");
         metadata = await metaRes.json();
 
-        console.log("Loading mean positions...");
         const meanRes = await fetchWithStatus("/data/web/mean_positions.bin");
         meanPositions = new Float32Array(await meanRes.arrayBuffer());
-        
-        console.log("Loading face indices...");
+
         const faceRes = await fetchWithStatus("/data/web/face_indices.bin");
         faceIndices = new Uint32Array(await faceRes.arrayBuffer());
 
-        console.log("Loading identity basis (float16)...");
         const idRes = await fetchWithStatus("/data/web/identity_basis.bin");
         identityBasis = float16BufferToFloat32Array(await idRes.arrayBuffer());
 
-        console.log("Loading expression basis (float16)...");
+        const jidRes = await fetchWithStatus("/data/web/joint_identity_basis.bin");
+        jointIdentityBasis = float16BufferToFloat32Array(await jidRes.arrayBuffer());
+
         const exprRes = await fetchWithStatus("/data/web/expression_basis.bin");
         expressionBasis = float16BufferToFloat32Array(await exprRes.arrayBuffer());
 
-        console.log("Loading skinning weights...");
         const skinRes = await fetchWithStatus("/data/web/skinning_weights.bin");
         skinningWeights = new Float32Array(await skinRes.arrayBuffer());
 
-        console.log("Loading joint regressor...");
         const regRes = await fetchWithStatus("/data/web/joint_regressor.bin");
         jointRegressor = new Float32Array(await regRes.arrayBuffer());
 
         try {
             const vpRes = await fetch("/data/web/vertex_body_parts.bin");
             vertexBodyParts = new Int32Array(await vpRes.arrayBuffer());
-            console.log("Loaded vertex body parts for material assignment.");
-        } catch (e) {
-            vertexBodyParts = null;
-        }
+        } catch (e) { vertexBodyParts = null; }
+
+        try {
+            const mirRes = await fetch("/data/web/mirror_indices.bin");
+            mirrorIndices = new Int32Array(await mirRes.arrayBuffer());
+        } catch (e) { mirrorIndices = null; }
 
         overlay.style.opacity = 0;
         setTimeout(() => overlay.style.display = "none", 500);
@@ -96,28 +131,28 @@ async function loadGnmBuffers() {
         initScene();
     } catch (e) {
         console.error("Failed to load GNM buffers", e);
-        overlay.querySelector("p").innerText = "Loading Failed! Ensure server is running.";
+        statusEl.innerText = "Loading Failed! " + e.message;
     }
 }
 
 function getVertexColors() {
-    if (!vertexBodyParts) return null;
-    const colors = new Float32Array(metadata.num_vertices * 3);
-    const palette = {
-        [BODY_PART.SKIN]: [0.78, 0.70, 0.62],
-        [BODY_PART.SCLERAS]: [0.95, 0.95, 0.97],
-        [BODY_PART.IRISES]: [0.30, 0.45, 0.65],
-        [BODY_PART.TEETH]: [0.92, 0.90, 0.85],
-        [BODY_PART.TONGUE]: [0.80, 0.50, 0.50],
-        [BODY_PART.GUM]: [0.75, 0.50, 0.50],
-        [BODY_PART.MOUTH_SOCK]: [0.35, 0.20, 0.20],
-    };
-    for (let i = 0; i < metadata.num_vertices; i++) {
-        const part = vertexBodyParts[i];
-        const c = palette[part] || palette[BODY_PART.SKIN];
-        colors[i * 3] = c[0];
-        colors[i * 3 + 1] = c[1];
-        colors[i * 3 + 2] = c[2];
+    if (!vertexBodyParts || !metadata) return null;
+    const n = metadata.num_vertices;
+    const colors = new Float32Array(n * 3);
+    const palette = {};
+    const gn = metadata.group_names || [];
+    gn.forEach((name, i) => {
+        if (name.includes('sclera') || name.includes('iris') || name.includes('pupil')) palette[i] = [0.95, 0.95, 0.97];
+        else if (name.includes('teeth') || name.includes('gum')) palette[i] = [0.92, 0.90, 0.85];
+        else if (name.includes('tongue')) palette[i] = [0.80, 0.50, 0.50];
+        else if (name.includes('mouth_sock')) palette[i] = [0.35, 0.20, 0.20];
+        else if (name.includes('eye')) palette[i] = [0.85, 0.85, 0.90];
+        else if (name.includes('ear')) palette[i] = [0.78, 0.70, 0.62];
+        else palette[i] = [0.78, 0.70, 0.62];
+    });
+    for (let i = 0; i < n; i++) {
+        const c = palette[vertexBodyParts[i]] || [0.78, 0.70, 0.62];
+        colors[i*3] = c[0]; colors[i*3+1] = c[1]; colors[i*3+2] = c[2];
     }
     return colors;
 }
@@ -133,7 +168,6 @@ function initScene() {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
     controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -144,38 +178,31 @@ function initScene() {
     controls.maxDistance = 1.0;
     controls.target.set(0, 0.23, 0.03);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
-    scene.add(ambientLight);
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
-    keyLight.position.set(0.5, 0.5, 0.5);
-    scene.add(keyLight);
-    const fillLight = new THREE.DirectionalLight(0xa5b4fc, 0.4);
-    fillLight.position.set(-0.5, 0.2, 0.3);
-    scene.add(fillLight);
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.45);
-    rimLight.position.set(0, 0.8, -0.8);
-    scene.add(rimLight);
+    const amb = new THREE.AmbientLight(0xffffff, 0.25);
+    scene.add(amb);
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    key.position.set(0.5, 0.5, 0.5);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xa5b4fc, 0.4);
+    fill.position.set(-0.5, 0.2, 0.3);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.45);
+    rim.position.set(0, 0.8, -0.8);
+    scene.add(rim);
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meanPositions), 3));
     geometry.setIndex(new THREE.BufferAttribute(faceIndices, 1));
 
     const vertColors = getVertexColors();
-    if (vertColors) {
-        geometry.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
-    }
+    if (vertColors) geometry.setAttribute('color', new THREE.BufferAttribute(vertColors, 3));
 
-    geometry.computeVertexNormals();
-
-    const material = new THREE.MeshStandardMaterial({
-        roughness: 0.4,
-        metalness: 0.1,
-        flatShading: false,
-        side: THREE.DoubleSide,
-        vertexColors: !!vertColors,
+    const mat = new THREE.MeshStandardMaterial({
+        roughness: 0.4, metalness: 0.05, flatShading: false,
+        side: THREE.DoubleSide, vertexColors: !!vertColors,
     });
 
-    faceMesh = new THREE.Mesh(geometry, material);
+    faceMesh = new THREE.Mesh(geometry, mat);
     scene.add(faceMesh);
 
     currentEmotionCoeffs = new Float32Array(metadata.expression_dim);
@@ -184,123 +211,129 @@ function initScene() {
 }
 
 const currentPos = new Float32Array(17821 * 3);
+const workVec3 = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
 
 function deformMesh(expressionCoeffs) {
     if (!faceMesh || !metadata) return 0;
-    currentPos.set(meanPositions);
     const vCount = metadata.num_vertices;
+    const nJ = metadata.num_joints;
 
-    const activeIdIndices = [], activeIdWeights = [];
+    currentPos.set(meanPositions);
+
+    const activeId = [], activeIdW = [];
     for (let i = 0; i < metadata.identity_dim; i++) {
         const w = currentIdentityCoeffs[i];
-        if (Math.abs(w) > 1e-4) { activeIdIndices.push(i); activeIdWeights.push(w); }
+        if (Math.abs(w) > 1e-4) { activeId.push(i); activeIdW.push(w); }
     }
-    for (let i = 0; i < activeIdIndices.length; i++) {
-        const idIdx = activeIdIndices[i], weight = activeIdWeights[i];
-        const offset = idIdx * vCount * 3;
-        for (let j = 0; j < vCount * 3; j++) currentPos[j] += identityBasis[offset + j] * weight;
+    for (let a = 0; a < activeId.length; a++) {
+        const off = activeId[a] * vCount * 3;
+        const w = activeIdW[a];
+        for (let j = 0; j < vCount * 3; j++) currentPos[j] += identityBasis[off + j] * w;
     }
 
-    const activeExprIndices = [], activeExprWeights = [];
+    const activeEx = [], activeExW = [];
     for (let i = 0; i < metadata.expression_dim; i++) {
         const w = expressionCoeffs[i];
-        if (Math.abs(w) > 1e-4) { activeExprIndices.push(i); activeExprWeights.push(w); }
+        if (Math.abs(w) > 1e-4) { activeEx.push(i); activeExW.push(w); }
     }
-    for (let i = 0; i < activeExprIndices.length; i++) {
-        const exprIdx = activeExprIndices[i], weight = activeExprWeights[i];
-        const offset = exprIdx * vCount * 3;
-        for (let j = 0; j < vCount * 3; j++) currentPos[j] += expressionBasis[offset + j] * weight;
+    for (let a = 0; a < activeEx.length; a++) {
+        const off = activeEx[a] * vCount * 3;
+        const w = activeExW[a];
+        for (let j = 0; j < vCount * 3; j++) currentPos[j] += expressionBasis[off + j] * w;
     }
 
     const joints = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-    for (let j = 0; j < 4; j++) {
+    for (let j = 0; j < nJ; j++) {
         let jx = 0, jy = 0, jz = 0;
-        const regOffset = j * vCount;
+        const regOff = j * vCount;
         for (let v = 0; v < vCount; v++) {
-            const w = jointRegressor[regOffset + v];
+            const w = jointRegressor[regOff + v];
             if (Math.abs(w) > 1e-6) {
-                jx += w * currentPos[v * 3]; jy += w * currentPos[v * 3 + 1]; jz += w * currentPos[v * 3 + 2];
+                const vi = v * 3;
+                jx += w * currentPos[vi]; jy += w * currentPos[vi + 1]; jz += w * currentPos[vi + 2];
             }
         }
         joints[j].set(jx, jy, jz);
     }
 
-    const gazeAutoCheckbox = document.getElementById("gaze-auto");
-    const activeRotations = [neckRotation, headRotation, [...leftEyeRotation], [...rightEyeRotation]];
-
-    if (gazeAutoCheckbox && gazeAutoCheckbox.checked && camera) {
-        const target = camera.position;
-        const headYaw = headRotation[1] + neckRotation[1];
-        const headPitch = headRotation[0] + neckRotation[0];
+    const gazeAuto = document.getElementById("gaze-auto");
+    const rot = [neckRotation, headRotation, [...leftEyeRotation], [...rightEyeRotation]];
+    if (gazeAuto && gazeAuto.checked && camera) {
+        const headY = headRotation[1] + neckRotation[1];
+        const headP = headRotation[0] + neckRotation[0];
         for (let j = 2; j <= 3; j++) {
-            const dir = new THREE.Vector3().copy(target).sub(joints[j]).normalize();
-            const yaw = Math.atan2(dir.x, dir.z);
-            const pitch = Math.asin(-dir.y);
-            let localYaw = yaw - headYaw;
-            let localPitch = pitch - headPitch;
-            localYaw = Math.max(-25 * Math.PI / 180.0, Math.min(25 * Math.PI / 180.0, localYaw));
-            localPitch = Math.max(-15 * Math.PI / 180.0, Math.min(15 * Math.PI / 180.0, localPitch));
-            activeRotations[j] = [localPitch, localYaw, 0];
+            const dir = new THREE.Vector3().copy(camera.position).sub(joints[j]).normalize();
+            let ly = Math.atan2(dir.x, dir.z) - headY;
+            let lp = Math.asin(-dir.y) - headP;
+            ly = Math.max(-0.436, Math.min(0.436, ly));
+            lp = Math.max(-0.262, Math.min(0.262, lp));
+            rot[j] = [lp, ly, 0];
         }
     }
 
-    function axisAngleToRotationMatrix(r) {
-        const rx = r[0], ry = r[1], rz = r[2];
-        const angle = Math.sqrt(rx * rx + ry * ry + rz * rz);
-        const m = new THREE.Matrix4();
-        if (angle > 1e-6) {
-            const axis = new THREE.Vector3(rx / angle, ry / angle, rz / angle);
-            m.makeRotationAxis(axis, angle);
+    const templateJoints = metadata.template_joint_positions.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+    const jidJoints = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    for (let j = 0; j < nJ; j++) jidJoints[j].copy(templateJoints[j]);
+    if (jointIdentityBasis) {
+        for (let i = 0; i < metadata.identity_dim; i++) {
+            const w = currentIdentityCoeffs[i];
+            if (Math.abs(w) > 1e-4) {
+                const off = i * nJ * 3;
+                for (let j = 0; j < nJ; j++) {
+                    jidJoints[j].x += jointIdentityBasis[off + j * 3] * w;
+                    jidJoints[j].y += jointIdentityBasis[off + j * 3 + 1] * w;
+                    jidJoints[j].z += jointIdentityBasis[off + j * 3 + 2] * w;
+                }
+            }
         }
-        return m;
     }
 
-    const T_local_0 = new THREE.Matrix4().makeTranslation(joints[0].x, joints[0].y, joints[0].z).multiply(axisAngleToRotationMatrix(activeRotations[0]));
-    const T_world_0 = T_local_0.clone();
+    const parents = metadata.joint_parent_indices;
+    const worldMats = buildJointTransforms(jidJoints, rot, new THREE.Vector3(0, 0, 0), parents);
 
-    const T_local_1 = new THREE.Matrix4().makeTranslation(joints[1].x - joints[0].x, joints[1].y - joints[0].y, joints[1].z - joints[0].z).multiply(axisAngleToRotationMatrix(activeRotations[1]));
-    const T_world_1 = T_world_0.clone().multiply(T_local_1);
-
-    const T_local_2 = new THREE.Matrix4().makeTranslation(joints[2].x - joints[1].x, joints[2].y - joints[1].y, joints[2].z - joints[1].z).multiply(axisAngleToRotationMatrix(activeRotations[2]));
-    const T_world_2 = T_world_1.clone().multiply(T_local_2);
-
-    const T_local_3 = new THREE.Matrix4().makeTranslation(joints[3].x - joints[1].x, joints[3].y - joints[1].y, joints[3].z - joints[1].z).multiply(axisAngleToRotationMatrix(activeRotations[3]));
-    const T_world_3 = T_world_1.clone().multiply(T_local_3);
-
-    const T_world = [T_world_0, T_world_1, T_world_2, T_world_3];
-    const skinningMatrices = [];
-    for (let j = 0; j < 4; j++) {
-        const invBind = new THREE.Matrix4().makeTranslation(-joints[j].x, -joints[j].y, -joints[j].z);
-        skinningMatrices.push(T_world[j].clone().multiply(invBind));
+    const skinningMats = [];
+    for (let j = 0; j < nJ; j++) {
+        const R = new THREE.Matrix4().extractRotation(worldMats[j]);
+        const Rj = new THREE.Vector3().copy(jidJoints[j]).applyMatrix4(R);
+        const T = new THREE.Matrix4().makeTranslation(
+            worldMats[j].elements[12] - Rj.x,
+            worldMats[j].elements[13] - Rj.y,
+            worldMats[j].elements[14] - Rj.z
+        );
+        T.multiply(R);
+        const invBind = new THREE.Matrix4().makeTranslation(-jidJoints[j].x, -jidJoints[j].y, -jidJoints[j].z);
+        skinningMats.push(T.clone().multiply(invBind));
     }
 
     for (let i = 0; i < vCount; i++) {
         const x = currentPos[i * 3], y = currentPos[i * 3 + 1], z = currentPos[i * 3 + 2];
         let sx = 0, sy = 0, sz = 0;
-        for (let j = 0; j < 4; j++) {
+        for (let j = 0; j < nJ; j++) {
             const w = skinningWeights[j * vCount + i];
             if (w > 1e-4) {
-                const m = skinningMatrices[j].elements;
-                sx += w * (m[0] * x + m[4] * y + m[8] * z + m[12]);
-                sy += w * (m[1] * x + m[5] * y + m[9] * z + m[13]);
-                sz += w * (m[2] * x + m[6] * y + m[10] * z + m[14]);
+                const m = skinningMats[j].elements;
+                const vx = m[0]*x + m[4]*y + m[8]*z + m[12];
+                const vy = m[1]*x + m[5]*y + m[9]*z + m[13];
+                const vz = m[2]*x + m[6]*y + m[10]*z + m[14];
+                sx += w * vx; sy += w * vy; sz += w * vz;
             }
         }
-        currentPos[i * 3] = sx; currentPos[i * 3 + 1] = sy; currentPos[i * 3 + 2] = sz;
+        currentPos[i*3] = sx; currentPos[i*3+1] = sy; currentPos[i*3+2] = sz;
     }
 
     const posAttr = faceMesh.geometry.attributes.position;
     posAttr.array.set(currentPos);
     posAttr.needsUpdate = true;
     faceMesh.geometry.computeVertexNormals();
-    return activeExprIndices.length + activeIdIndices.length;
+
+    return activeEx.length + activeId.length;
 }
 
 let lastTime = performance.now();
 let frameCount = 0;
-let fpsVal = document.getElementById("fps-val");
-let msVal = document.getElementById("ms-val");
-let activeVal = document.getElementById("active-val");
+const fpsVal = document.getElementById("fps-val");
+const msVal = document.getElementById("ms-val");
+const activeVal = document.getElementById("active-val");
 
 let lastBlinkTime = 0;
 let nextBlinkDelay = 2000 + Math.random() * 3000;
@@ -308,66 +341,46 @@ let blinkStartTime = 0;
 let isBlinking = false;
 
 function scheduleNextBlink() {
-    const baseInterval = 2500;
-    const jitter = (Math.random() * 2.0 - 1.0) * 1500;
-    let delay = baseInterval + jitter;
-    delay = Math.max(1200, Math.min(7000, delay));
-    return delay;
+    return Math.max(1200, Math.min(7000, 2500 + (Math.random() * 2 - 1) * 1500));
 }
 
 function renderLoop(time) {
     requestAnimationFrame(renderLoop);
     const t0 = performance.now();
-
     const now = performance.now();
-    let currentBlinkWeight = 0;
+
+    let blinkW = 0;
     if (!isBlinking && now - lastBlinkTime > nextBlinkDelay) {
-        isBlinking = true;
-        blinkStartTime = now;
+        isBlinking = true; blinkStartTime = now;
     }
     if (isBlinking) {
-        const elapsed = (now - blinkStartTime) / 120;
-        if (elapsed >= 1.0) {
-            isBlinking = false;
-            lastBlinkTime = now;
-            nextBlinkDelay = scheduleNextBlink();
-        } else {
-            currentBlinkWeight = Math.sin(elapsed * Math.PI) * 1.5;
-        }
+        const el = (now - blinkStartTime) / 120;
+        if (el >= 1.0) { isBlinking = false; lastBlinkTime = now; nextBlinkDelay = scheduleNextBlink(); }
+        else { blinkW = Math.sin(el * Math.PI) * 1.5; }
     }
 
-    let activeShapesCount = 0;
-    let blended = null;
-
+    let blended;
     if (activeUtterancePlaying && visemeTimeline) {
-        const timeS = audioSync.getCurrentTime();
-        document.getElementById("audio-time").innerText = `${timeS.toFixed(2)}s / ${audioSync.getDuration().toFixed(2)}s`;
-        const speechCoeffs = animController.getSpeechCoefficients(timeS, visemeTimeline);
-        blended = animController.blend(speechCoeffs, currentEmotionCoeffs);
+        const ts = audioSync.getCurrentTime();
+        document.getElementById("audio-time").innerText = `${ts.toFixed(2)}s / ${audioSync.getDuration().toFixed(2)}s`;
+        blended = animController.blend(animController.getSpeechCoefficients(ts, visemeTimeline), currentEmotionCoeffs);
     } else {
-        const speechCoeffs = new Array(182).fill(0.0);
-        blended = animController.blend(speechCoeffs, currentEmotionCoeffs);
+        blended = animController.blend(new Array(182).fill(0.0), currentEmotionCoeffs);
     }
 
-    const finalCoeffs = blended;
-    if (blinkCoefficients && currentBlinkWeight > 0.01) {
-        for (let j = 0; j < 200; j++) finalCoeffs[j] += blinkCoefficients[j] * currentBlinkWeight;
+    if (blinkCoefficients && blinkW > 0.01) {
+        for (let j = 0; j < 200; j++) blended[j] += blinkCoefficients[j] * blinkW;
     }
 
-    activeShapesCount = deformMesh(finalCoeffs);
-
+    const active = deformMesh(blended);
     controls.update();
     renderer.render(scene, camera);
 
     const t1 = performance.now();
     frameCount++;
-    if (t1 - lastTime >= 1000) {
-        fpsVal.innerText = frameCount;
-        frameCount = 0;
-        lastTime = t1;
-    }
+    if (t1 - lastTime >= 1000) { fpsVal.innerText = frameCount; frameCount = 0; lastTime = t1; }
     msVal.innerText = (t1 - t0).toFixed(1);
-    activeVal.innerText = activeShapesCount;
+    activeVal.innerText = active;
 }
 
 const speakBtn = document.getElementById("speak-btn");
@@ -377,10 +390,7 @@ const emotionSelect = document.getElementById("emotion-select");
 const intensityRange = document.getElementById("intensity-range");
 const intensityVal = document.getElementById("intensity-val");
 
-intensityRange.addEventListener("input", (e) => {
-    intensityVal.innerText = e.target.value;
-    updateCurrentEmotion();
-});
+intensityRange.addEventListener("input", e => { intensityVal.innerText = e.target.value; updateCurrentEmotion(); });
 emotionSelect.addEventListener("change", updateCurrentEmotion);
 
 function updateCurrentEmotion() {
@@ -388,20 +398,9 @@ function updateCurrentEmotion() {
     const name = emotionSelect.value;
     const intensity = parseFloat(intensityRange.value);
     speakBtn.disabled = true;
-    fetch("/api/emotion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name, intensity: intensity })
-    })
-    .then(r => r.json())
-    .then(data => {
-        currentEmotionCoeffs = new Float32Array(data.coefficients);
-        speakBtn.disabled = false;
-    })
-    .catch(e => {
-        console.error("Failed to load emotion coefficients", e);
-        speakBtn.disabled = false;
-    });
+    fetch("/api/emotion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, intensity }) })
+        .then(r => r.json()).then(d => { currentEmotionCoeffs = new Float32Array(d.coefficients); speakBtn.disabled = false; })
+        .catch(e => { console.error("Emotion fetch failed", e); speakBtn.disabled = false; });
 }
 
 speakBtn.addEventListener("click", async () => {
@@ -413,189 +412,109 @@ speakBtn.addEventListener("click", async () => {
     try {
         const styleSelect = document.getElementById("style-select");
         const endpoint = text.length > 80 ? "/api/speak/stream" : "/api/speak";
-        const response = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+        const r = await fetch(endpoint, {
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                text: text,
-                emotion: emotionSelect.value,
+                text, emotion: emotionSelect.value,
                 intensity: parseFloat(intensityRange.value),
                 style_id: parseInt(styleSelect.value || "0")
             })
         });
-        const data = await response.json();
-        await audioSync.loadAudioFromBase64(data.audio_base64);
-        visemeTimeline = data.visemes;
+        const d = await r.json();
+        await audioSync.loadAudioFromBase64(d.audio_base64);
+        visemeTimeline = d.visemes;
         playPauseBtn.disabled = false;
         playPauseBtn.innerText = "Pause";
         audioSync.play();
         activeUtterancePlaying = true;
-        audioSync.onEnded = () => {
-            playPauseBtn.innerText = "Play Audio";
-            activeUtterancePlaying = false;
-        };
-        if (data.chunks) {
-            console.log(`Streamed ${data.num_sentences} sentence chunks.`);
-        }
-    } catch (e) {
-        console.error("Synthesize API failed", e);
-    } finally {
-        speakBtn.disabled = false;
-        speakBtn.innerText = "Speak";
-    }
+        audioSync.onEnded = () => { playPauseBtn.innerText = "Play Audio"; activeUtterancePlaying = false; };
+    } catch (e) { console.error("Synthesize API failed", e); }
+    finally { speakBtn.disabled = false; speakBtn.innerText = "Speak"; }
 });
 
 playPauseBtn.addEventListener("click", () => {
-    if (audioSync.isPlaying) {
-        audioSync.pause();
-        playPauseBtn.innerText = "Play Audio";
-    } else {
-        audioSync.play();
-        playPauseBtn.innerText = "Pause";
-    }
+    if (audioSync.isPlaying) { audioSync.pause(); playPauseBtn.innerText = "Play Audio"; }
+    else { audioSync.play(); playPauseBtn.innerText = "Pause"; }
 });
 
 const yawSlider = document.getElementById("pose-yaw");
 const pitchSlider = document.getElementById("pose-pitch");
 const gazeYawSlider = document.getElementById("gaze-yaw");
 const gazePitchSlider = document.getElementById("gaze-pitch");
-const yawVal = document.getElementById("yaw-val");
-const pitchVal = document.getElementById("pitch-val");
-const gazeYVal = document.getElementById("gaze-y-val");
-const gazePVal = document.getElementById("gaze-p-val");
+document.getElementById("yaw-val");
+document.getElementById("pitch-val");
+document.getElementById("gaze-y-val");
+document.getElementById("gaze-p-val");
 
-yawSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    yawVal.innerText = `${val}°`;
-    neckRotation[1] = val * Math.PI / 180.0;
-});
-pitchSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    pitchVal.innerText = `${val}°`;
-    neckRotation[0] = val * Math.PI / 180.0;
-});
-gazeYawSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    gazeYVal.innerText = `${val}°`;
-    const rad = val * Math.PI / 180.0;
-    leftEyeRotation[1] = rad;
-    rightEyeRotation[1] = rad;
-});
-gazePitchSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    gazePVal.innerText = `${val}°`;
-    const rad = val * Math.PI / 180.0;
-    leftEyeRotation[0] = rad;
-    rightEyeRotation[0] = rad;
-});
+yawSlider.addEventListener("input", e => { const v = parseInt(e.target.value); document.getElementById("yaw-val").innerText = `${v}°`; neckRotation[1] = v * Math.PI / 180; });
+pitchSlider.addEventListener("input", e => { const v = parseInt(e.target.value); document.getElementById("pitch-val").innerText = `${v}°`; neckRotation[0] = v * Math.PI / 180; });
+gazeYawSlider.addEventListener("input", e => { const v = parseInt(e.target.value); document.getElementById("gaze-y-val").innerText = `${v}°`; const r = v * Math.PI / 180; leftEyeRotation[1] = r; rightEyeRotation[1] = r; });
+gazePitchSlider.addEventListener("input", e => { const v = parseInt(e.target.value); document.getElementById("gaze-p-val").innerText = `${v}°`; const r = v * Math.PI / 180; leftEyeRotation[0] = r; rightEyeRotation[0] = r; });
 
 const randomIdBtn = document.getElementById("random-id-btn");
-const idGender = document.getElementById("id-gender");
-const idEthnicity = document.getElementById("id-ethnicity");
-
 randomIdBtn.addEventListener("click", () => {
-    const gender = parseInt(idGender.value);
-    const ethnicity = parseInt(idEthnicity.value);
-    randomIdBtn.disabled = true;
-    randomIdBtn.innerText = "Generating...";
-    fetch("/api/identity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gender: gender, ethnicity: ethnicity })
-    })
-    .then(r => r.json())
-    .then(data => {
-        currentIdentityCoeffs.set(data.coefficients);
-        console.log("New GNM identity applied.");
-    })
-    .catch(e => console.error("Identity generation failed", e))
-    .finally(() => {
-        randomIdBtn.disabled = false;
-        randomIdBtn.innerText = "Generate Identity";
-    });
+    const gender = parseInt(document.getElementById("id-gender").value);
+    const ethnicity = parseInt(document.getElementById("id-ethnicity").value);
+    randomIdBtn.disabled = true; randomIdBtn.innerText = "Generating...";
+    fetch("/api/identity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gender, ethnicity }) })
+        .then(r => r.json()).then(d => { currentIdentityCoeffs.set(d.coefficients); })
+        .catch(e => console.error("Identity generation failed", e))
+        .finally(() => { randomIdBtn.disabled = false; randomIdBtn.innerText = "Generate Identity"; });
 });
 
 let blinkCoefficients = null;
-
 async function loadBlinkCoefficients() {
     try {
-        const res = await fetch("/api/blink", {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
-        });
-        const data = await res.json();
-        blinkCoefficients = new Float32Array(data.coefficients);
-        console.log("Blink coefficients pre-cached.");
-    } catch(e) {
-        console.warn("Failed to load blink coefficients", e);
-    }
+        const r = await fetch("/api/blink", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        blinkCoefficients = new Float32Array((await r.json()).coefficients);
+    } catch(e) { console.warn("Blink coefficients failed", e); }
 }
 
 window.addEventListener('resize', () => {
-    const container = document.getElementById("canvas-container");
+    const c = document.getElementById("canvas-container");
     if (!camera || !renderer) return;
-    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.aspect = c.clientWidth / c.clientHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setSize(c.clientWidth, c.clientHeight);
 });
 
 let pcaSlidersInitialized = false;
-let pcaSliderValues = new Float32Array(253).fill(0.0);
+const pcaSliderValues = new Float32Array(253).fill(0.0);
 
 async function initPcaSliders() {
     if (pcaSlidersInitialized) return;
     try {
-        const res = await fetch("/api/identity/info", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ n: 10 })
-        });
-        const info = await res.json();
+        const r = await fetch("/api/identity/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ n: 10 }) });
+        const info = await r.json();
         const container = document.getElementById("pca-sliders-container");
         container.innerHTML = "";
         for (let i = 0; i < info.num_components; i++) {
-            const name = info.component_names[i];
             const div = document.createElement("div");
             div.className = "intensity-slider";
             div.style.marginBottom = "4px";
             const label = document.createElement("label");
-            label.style.minWidth = "90px";
-            label.style.fontSize = "0.75rem";
-            label.textContent = name;
+            label.style.minWidth = "90px"; label.style.fontSize = "0.75rem";
+            label.textContent = info.component_names[i];
             const slider = document.createElement("input");
-            slider.type = "range";
-            slider.min = "-3";
-            slider.max = "3";
-            slider.step = "0.05";
-            slider.value = "0";
+            slider.type = "range"; slider.min = "-3"; slider.max = "3"; slider.step = "0.05"; slider.value = "0";
             const val = document.createElement("span");
-            val.style.fontSize = "0.75rem";
-            val.style.minWidth = "20px";
-            val.textContent = "0";
+            val.style.fontSize = "0.75rem"; val.style.minWidth = "20px"; val.textContent = "0";
             slider.addEventListener("input", (idx => {
                 const v = parseFloat(slider.value);
                 pcaSliderValues[idx] = v;
                 currentIdentityCoeffs[idx] = v;
                 val.textContent = v.toFixed(1);
             }).bind(null, i));
-            div.appendChild(label);
-            div.appendChild(slider);
-            div.appendChild(val);
+            div.appendChild(label); div.appendChild(slider); div.appendChild(val);
             container.appendChild(div);
         }
         pcaSlidersInitialized = true;
-        console.log("Identity PCA sliders initialized.");
-    } catch (e) {
-        console.warn("Failed to load PCA sliders", e);
-    }
+    } catch (e) { console.warn("PCA sliders failed", e); }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     const details = document.querySelector("#identity-pca-sliders details");
-    if (details) {
-        details.addEventListener("toggle", () => {
-            if (details.open) initPcaSliders();
-        });
-    }
+    if (details) details.addEventListener("toggle", () => { if (details.open) initPcaSliders(); });
 });
 
 window.onload = loadGnmBuffers;

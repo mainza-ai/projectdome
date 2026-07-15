@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -10,6 +11,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 from src.training.dataset import VocasetDataset, collate_fn, VOCA_ALL_SUBJECTS, VOCA_TRAIN_SUBJECTS, VOCA_VAL_SUBJECTS, VOCA_TEST_SUBJECTS
 from src.training.model import SpeechToCoefficientsModel
+from src.training.config import TrainingConfig
+
+try:
+    from gnm.shape.gnm_numpy import GNM
+    from gnm.shape.data.versions.gnm_specs import GNMMajorVersion, GNMVariant
+    _GNM_AVAILABLE = True
+except ImportError:
+    _GNM_AVAILABLE = False
 
 log = logging.getLogger('training')
 
@@ -38,13 +47,46 @@ def compute_edge_loss(pred, target):
     edge_diff = torch.abs(pred_edges - target_edges)
     return edge_diff.mean()
 
-def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
+_gnm_model = None
+def compute_vertex_loss(pred_coeffs, target_coeffs, identity=None):
+    global _gnm_model
+    if not _GNM_AVAILABLE:
+        return torch.tensor(0.0, device=pred_coeffs.device)
+    if _gnm_model is None:
+        _gnm_model = GNM.from_local(GNMMajorVersion.V3, GNMVariant.HEAD)
+    device = pred_coeffs.device
+    identity_np = np.zeros(_gnm_model.identity_dim, dtype=np.float32) if identity is None else identity
+    rotations = np.zeros((_gnm_model.num_joints, 3), dtype=np.float32)
+    translation = np.zeros(3, dtype=np.float32)
+    total_loss = 0.0
+    B, T, D = pred_coeffs.shape
+    n_vertices = _gnm_model.num_vertices
+    for b in range(B):
+        for t in range(T):
+            expr_pred = np.zeros(_gnm_model.expression_dim, dtype=np.float32)
+            expr_target = np.zeros(_gnm_model.expression_dim, dtype=np.float32)
+            expr_pred[200:382] = pred_coeffs[b, t].detach().cpu().numpy()
+            expr_target[200:382] = target_coeffs[b, t].detach().cpu().numpy()
+            v_pred = _gnm_model(identity_np, expr_pred, rotations, translation)
+            v_target = _gnm_model(identity_np, expr_target, rotations, translation)
+            total_loss += float(np.mean(np.abs(v_pred - v_target)))
+    return torch.tensor(total_loss / (B * T), device=device)
+
+def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256, config: TrainingConfig = None):
+    if config is None:
+        config = TrainingConfig()
+        config.epochs = epochs
+        config.batch_size = batch_size
+        config.learning_rate = lr
+        config.hidden_dim = hidden_dim
+
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     log.info(f"Training on device: {device}")
     log.info(f"VOCA split: {len(VOCA_TRAIN_SUBJECTS)} train, {len(VOCA_VAL_SUBJECTS)} val, {len(VOCA_TEST_SUBJECTS)} test")
     log.info(f"  Train: {VOCA_TRAIN_SUBJECTS}")
     log.info(f"  Val:   {VOCA_VAL_SUBJECTS}")
     log.info(f"  Test:  {VOCA_TEST_SUBJECTS}")
+    log.info(f"Config: feature={config.feature_type}, vertex_loss={config.use_vertex_loss}")
     try:
         train_dataset = VocasetDataset(split="train")
         val_dataset = VocasetDataset(split="val")
@@ -52,9 +94,9 @@ def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
         log.error(f"Dataset error: {e}")
         log.error("Run reproject_vocaset.py first.")
         sys.exit(1)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-    model = SpeechToCoefficientsModel(hidden_dim=hidden_dim).to(device)
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
+    model = SpeechToCoefficientsModel(hidden_dim=config.hidden_dim).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     l1_loss_fn = nn.L1Loss()
     checkpoint_dir = "voca/model/checkpoints"
@@ -83,9 +125,17 @@ def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
             accel_loss = compute_acceleration_loss(preds * loss_mask, targets * loss_mask)
             edge_loss = compute_edge_loss(preds * loss_mask, targets * loss_mask)
             reg_loss = compute_regularization_loss(preds * loss_mask)
-            total_loss = l1_loss + 0.5 * vel_loss + 0.2 * accel_loss + 0.1 * edge_loss + 1e-4 * reg_loss
+            total_loss = (config.loss_position_weight * l1_loss +
+                          config.loss_velocity_weight * vel_loss +
+                          config.loss_acceleration_weight * accel_loss +
+                          config.loss_edge_weight * edge_loss +
+                          config.loss_regularization_weight * reg_loss)
+            if config.use_vertex_loss and _GNM_AVAILABLE:
+                vertex_loss = compute_vertex_loss(preds, targets)
+                total_loss = total_loss + config.loss_vertex_weight * vertex_loss
+                train_vertex = train_vertex + vertex_loss.item() if 'train_vertex' in dir() else vertex_loss.item()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config.gradient_clip)
             optimizer.step()
             train_loss += total_loss.item()
             train_l1 += l1_loss.item()
