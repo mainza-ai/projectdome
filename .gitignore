@@ -16,6 +16,9 @@ voca/model/gstep_52280.model.data-*
 # Generated output
 output/
 data/web/
+data/voice/
+pretrained_models/
+pretrained_model_checkpoints/
 
 # OS
 .DS_Store
