@@ -7,11 +7,15 @@ __pycache__/
 dist/
 build/
 
-# Large data (tracked via Git LFS or excluded)
-voca/trainingdata/data_verts.npy
-voca/trainingdata/processed_audio_deepspeech.pkl
-voca/trainingdata/raw_audio_fixed.pkl
-voca/model/gstep_52280.model.data-*
+# Local development documents (do not push)
+dev-docs/
+
+# VOCA model files (download separately)
+voca/model/
+voca/trainingdata/
+
+# Generated reprojected datasets (run reproject_vocaset.py)
+voca/reprojected/
 
 # Generated output
 output/
