@@ -34,4 +34,16 @@ Completed remaining phases: tongue animation coefficients, identity PCA slider b
 - Screenshot added to README
 
 ## [2026-07-15] audit | Comprehensive codebase audit
+## [2026-07-15] exec | Remaining gaps implemented
+A1-A7 and B3-B6 completed and verified:
+- A1: Buffer export added to setup.sh (Step 7)
+- A2: 45-second request timeout via signal.alarm on all synthesis endpoints
+- A3: evaluate.py speaker_ids fix (was already correct, verified)
+- A4/B3: Reprojection skip-if-exists (partial progress saving)
+- A5: Mind layer wired as /api/chat and /api/chat/reset — returns response_text + emotion + audio + visemes
+- A6: Web client shows actionable error when buffers are missing ("run python tools/export_basis.py")
+- B5: Training pipeline orchestrator (src/training/run_pipeline.py)
+- B6: Structured logging for train.py, evaluate.py, reproject_vocaset.py
+All 25 tests pass, all 9 API endpoints verified.
+
 Full audit after production execution: 12 items fixed, 10 remaining gaps identified (A1-A7 critical, B1-B6 quality, C1-C4 performance), 5 missing features documented. Key fixes: eager import chains, Keras warnings fully suppressed, all 25 tests passing, server starts cleanly.

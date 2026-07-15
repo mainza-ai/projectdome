@@ -41,35 +41,43 @@ function float16BufferToFloat32Array(arrayBuffer) {
     return float32Array;
 }
 
+function fetchWithStatus(url) {
+    return fetch(url).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${url} not found — run 'python tools/export_basis.py' to generate web buffers`);
+        return r;
+    });
+}
+
 async function loadGnmBuffers() {
     const overlay = document.getElementById("loading-overlay");
+    const statusEl = overlay.querySelector("p");
     try {
         console.log("Loading metadata...");
-        const metaRes = await fetch("/data/web/metadata.json");
+        const metaRes = await fetchWithStatus("/data/web/metadata.json");
         metadata = await metaRes.json();
 
         console.log("Loading mean positions...");
-        const meanRes = await fetch("/data/web/mean_positions.bin");
+        const meanRes = await fetchWithStatus("/data/web/mean_positions.bin");
         meanPositions = new Float32Array(await meanRes.arrayBuffer());
-
+        
         console.log("Loading face indices...");
-        const faceRes = await fetch("/data/web/face_indices.bin");
+        const faceRes = await fetchWithStatus("/data/web/face_indices.bin");
         faceIndices = new Uint32Array(await faceRes.arrayBuffer());
 
         console.log("Loading identity basis (float16)...");
-        const idRes = await fetch("/data/web/identity_basis.bin");
+        const idRes = await fetchWithStatus("/data/web/identity_basis.bin");
         identityBasis = float16BufferToFloat32Array(await idRes.arrayBuffer());
 
         console.log("Loading expression basis (float16)...");
-        const exprRes = await fetch("/data/web/expression_basis.bin");
+        const exprRes = await fetchWithStatus("/data/web/expression_basis.bin");
         expressionBasis = float16BufferToFloat32Array(await exprRes.arrayBuffer());
 
         console.log("Loading skinning weights...");
-        const skinRes = await fetch("/data/web/skinning_weights.bin");
+        const skinRes = await fetchWithStatus("/data/web/skinning_weights.bin");
         skinningWeights = new Float32Array(await skinRes.arrayBuffer());
 
         console.log("Loading joint regressor...");
-        const regRes = await fetch("/data/web/joint_regressor.bin");
+        const regRes = await fetchWithStatus("/data/web/joint_regressor.bin");
         jointRegressor = new Float32Array(await regRes.arrayBuffer());
 
         try {

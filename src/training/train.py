@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -9,6 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 from src.training.dataset import VocasetDataset, collate_fn, VOCA_ALL_SUBJECTS, VOCA_TRAIN_SUBJECTS, VOCA_VAL_SUBJECTS, VOCA_TEST_SUBJECTS
 from src.training.model import SpeechToCoefficientsModel
+
+log = logging.getLogger('training')
 
 def compute_velocity_loss(pred, target):
     if pred.size(1) < 2:
@@ -37,18 +40,17 @@ def compute_edge_loss(pred, target):
 
 def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    print(f"Training on device: {device}")
-    print(f"VOCA split: {len(VOCA_TRAIN_SUBJECTS)} train, {len(VOCA_VAL_SUBJECTS)} val, {len(VOCA_TEST_SUBJECTS)} test subjects")
-    print(f"  Train: {VOCA_TRAIN_SUBJECTS}")
-    print(f"  Val:   {VOCA_VAL_SUBJECTS}")
-    print(f"  Test:  {VOCA_TEST_SUBJECTS}")
-    print("Loading datasets...")
+    log.info(f"Training on device: {device}")
+    log.info(f"VOCA split: {len(VOCA_TRAIN_SUBJECTS)} train, {len(VOCA_VAL_SUBJECTS)} val, {len(VOCA_TEST_SUBJECTS)} test")
+    log.info(f"  Train: {VOCA_TRAIN_SUBJECTS}")
+    log.info(f"  Val:   {VOCA_VAL_SUBJECTS}")
+    log.info(f"  Test:  {VOCA_TEST_SUBJECTS}")
     try:
         train_dataset = VocasetDataset(split="train")
         val_dataset = VocasetDataset(split="val")
     except FileNotFoundError as e:
-        print(f"Error: {e}")
-        print("Please run python src/training/reproject_vocaset.py first.")
+        log.error(f"Dataset error: {e}")
+        log.error("Run reproject_vocaset.py first.")
         sys.exit(1)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
@@ -132,8 +134,8 @@ def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
         val_accel /= len(val_loader)
         val_edge /= len(val_loader)
         val_reg /= len(val_loader)
-        print(f"Epoch {epoch}: Train Loss: {train_loss:.6f} (L1: {train_l1:.6f}, Vel: {train_vel:.6f}, Accel: {train_accel:.6f}, Edge: {train_edge:.6f}, Reg: {train_reg:.6f})")
-        print(f"          Val Loss:   {val_loss:.6f} (L1: {val_l1:.6f}, Vel: {val_vel:.6f}, Accel: {val_accel:.6f}, Edge: {val_edge:.6f}, Reg: {val_reg:.6f})")
+        log.info(f"Epoch {epoch:2d} — train: {train_loss:.6f} (L1:{train_l1:.4f} Vel:{train_vel:.4f} Accel:{train_accel:.4f} Edge:{train_edge:.4f})")
+        log.info(f"               val:   {val_loss:.6f} (L1:{val_l1:.4f} Vel:{val_vel:.4f} Accel:{val_accel:.4f} Edge:{val_edge:.4f})")
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             checkpoint_path = os.path.join(checkpoint_dir, "best_model.pt")
@@ -144,13 +146,16 @@ def train(epochs=50, batch_size=8, lr=1e-4, hidden_dim=256):
                 "val_loss": val_loss,
                 "speaker_labels": VOCA_ALL_SUBJECTS,
             }, checkpoint_path)
-            print(f"  --> Saved new best checkpoint to {checkpoint_path}")
+            log.info(f"  --> Saved best checkpoint (epoch {epoch}, val loss: {val_loss:.6f})")
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'
+    )
     import argparse
     parser = argparse.ArgumentParser(description="Train SpeechToCoefficientsModel on reprojected VOCASET.")
-    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
-    parser.add_argument("--batch", type=int, default=8, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--lr", type=float, default=1e-4)
     args = parser.parse_args()
     train(epochs=args.epochs, batch_size=args.batch, lr=args.lr)

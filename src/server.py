@@ -7,6 +7,7 @@ import io
 import gc
 import time
 import re
+import signal
 import logging
 import traceback
 import soundfile as sf
@@ -23,6 +24,8 @@ from src.alignment.pipeline import AcousticPipeline
 from src.animation.emotion_blender import EmotionBlender, _SilentIdentitySampler
 from gnm.shape.semantic_sampler import Gender, Ethnicity, Expression
 from src.training.model import SpeechToCoefficientsModel
+from src.mind.local_provider import LocalMindProvider
+from src.mind.conversation import ConversationContext
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +38,16 @@ pipeline = None
 blender = None
 identity_sampler = None
 neural_model = None
+mind_provider = None
+conversation = None
 device = None
+REQUEST_TIMEOUT = 45
+
+class TimeoutError(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Request timed out")
 
 def init_neural_model():
     global neural_model, device
@@ -54,6 +66,20 @@ def init_neural_model():
             neural_model = None
     else:
         log.info("SpeechToCoefficients checkpoint not found. fallback to Path A.")
+
+def with_timeout(func):
+    def wrapper(*args, **kwargs):
+        if hasattr(signal, 'SIGALRM'):
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(REQUEST_TIMEOUT)
+        try:
+            return func(*args, **kwargs)
+        except TimeoutError:
+            raise
+        finally:
+            if hasattr(signal, 'SIGALRM'):
+                signal.alarm(0)
+    return wrapper
 
 class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -96,13 +122,15 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                 ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml",
                 ".ico": "image/x-icon",
             }
-            content_type = content_types.get(ext, "text/plain")
-            self.serve_file(local_path, content_type)
+            self.serve_file(local_path, content_types.get(ext, "text/plain"))
         except Exception as e:
             log.error(f"GET error: {e}")
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(b"Internal server error")
+            try:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(b"Internal server error")
+            except Exception:
+                pass
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -110,6 +138,10 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+
+    @with_timeout
+    def process_synthesis(self, text):
+        return pipeline.process(text)
 
     def do_POST(self):
         try:
@@ -132,18 +164,41 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
         response = {}
 
         try:
-            if self.path == "/api/speak":
-                text = data.get("text", "")
-                emotion = data.get("emotion", None)
-                intensity = float(data.get("intensity", 1.0))
-                style_id = int(data.get("style_id", 0))
-                log.info(f"/api/speak: '{text[:60]}...' (emotion: {emotion}, style: {style_id})")
-                audio, sr, visemes = pipeline.process(text)
+            if self.path == "/api/chat":
+                user_text = data.get("text", "")
+                log.info(f"/api/chat: '{user_text[:60]}...'")
+                mind_resp = mind_provider.generate(user_text, conversation.get_history())
+                conversation.add_user_message(user_text)
+                conversation.add_assistant_message(mind_resp.text)
+                audio, sr, visemes = self.process_synthesis(mind_resp.text)
                 wav_io = io.BytesIO()
                 sf.write(wav_io, audio, sr, format='WAV')
                 wav_bytes = wav_io.getvalue()
                 audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-                del wav_io, wav_bytes
+                if mind_resp.emotion:
+                    emotion_coeffs = blender.get_emotion_coefficients(mind_resp.emotion, mind_resp.emotion_intensity)
+                else:
+                    emotion_coeffs = np.zeros(383, dtype=np.float32)
+                response = {
+                    "response_text": mind_resp.text,
+                    "emotion": mind_resp.emotion,
+                    "audio_base64": audio_base64,
+                    "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in visemes],
+                    "emotion_coefficients": emotion_coeffs.tolist(),
+                }
+
+            elif self.path == "/api/chat/reset":
+                conversation.clear()
+                response = {"status": "conversation reset"}
+
+            elif self.path == "/api/speak":
+                text = data.get("text", "")
+                log.info(f"/api/speak: '{text[:60]}...'")
+                audio, sr, visemes = self.process_synthesis(text)
+                wav_io = io.BytesIO()
+                sf.write(wav_io, audio, sr, format='WAV')
+                wav_bytes = wav_io.getvalue()
+                audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
                 response = {
                     "audio_base64": audio_base64,
                     "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in visemes]
@@ -158,19 +213,13 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
             elif self.path == "/api/identity":
                 gender = int(data.get("gender", 0))
                 ethnicity = int(data.get("ethnicity", 2))
-                g_enum = Gender(gender)
-                e_enum = Ethnicity(ethnicity)
-                coeffs = identity_sampler.sample_identity(g_enum, e_enum, num_samples=1)[0]
+                coeffs = identity_sampler.sample_identity(Gender(gender), Ethnicity(ethnicity), num_samples=1)[0]
                 response = {"coefficients": coeffs.tolist()}
 
             elif self.path == "/api/identity/info":
                 n = int(data.get("n", 10))
                 names = [f"identity_{i:03d}" for i in range(min(n, 253))]
-                response = {
-                    "identity_dim": 253,
-                    "component_names": names,
-                    "num_components": min(n, 253),
-                }
+                response = {"identity_dim": 253, "component_names": names, "num_components": min(n, 253)}
 
             elif self.path == "/api/speak/stream":
                 text = data.get("text", "")
@@ -184,7 +233,7 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                 all_visemes = []
                 offset = 0.0
                 for i, sentence in enumerate(sentences):
-                    chunk_audio, chunk_sr, chunk_visemes = pipeline.process(sentence)
+                    chunk_audio, chunk_sr, chunk_visemes = self.process_synthesis(sentence)
                     for v in chunk_visemes:
                         v.start_time += offset
                         v.end_time += offset
@@ -198,33 +247,38 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                     wav_io = io.BytesIO()
                     sf.write(wav_io, chunk_audio, chunk_sr, format='WAV')
                     chunk_b64 = base64.b64encode(wav_io.getvalue()).decode('utf-8')
-                    chunks.append({
-                        "index": i,
-                        "audio_base64": chunk_b64,
-                        "duration": len(chunk_audio) / chunk_sr,
-                    })
+                    chunks.append({"index": i, "audio_base64": chunk_b64, "duration": len(chunk_audio) / chunk_sr})
                 wav_io = io.BytesIO()
                 sf.write(wav_io, total_audio, total_sr, format='WAV')
                 audio_base64 = base64.b64encode(wav_io.getvalue()).decode('utf-8')
                 response = {
                     "audio_base64": audio_base64,
                     "visemes": [{"name": v.name, "start_time": v.start_time, "end_time": v.end_time} for v in all_visemes],
-                    "chunks": chunks,
-                    "num_sentences": len(sentences),
+                    "chunks": chunks, "num_sentences": len(sentences),
                 }
 
             elif self.path == "/api/blink":
                 left_wink = blender.sampler.sample_expression(Expression.WINK_LEFT, num_samples=1)[0]
                 right_wink = blender.sampler.sample_expression(Expression.WINK_RIGHT, num_samples=1)[0]
-                blink_coeffs = (left_wink + right_wink).tolist()
-                response = {"coefficients": blink_coeffs}
+                response = {"coefficients": ((left_wink + right_wink).tolist())}
+
+            elif self.path == "/api/health":
+                response = {
+                    "status": "ok",
+                    "pipeline": pipeline is not None,
+                    "blender": blender is not None,
+                    "identity_sampler": identity_sampler is not None,
+                    "mind_provider": mind_provider is not None,
+                }
 
             else:
                 response = {"error": f"Unknown endpoint: {self.path}"}
-                self.log_request("POST", self.path, 404, (time.time() - t0) * 1000)
 
+        except TimeoutError:
+            log.error(f"/api{self.path.replace('/api/',' ')} timed out after {REQUEST_TIMEOUT}s")
+            response = {"error": f"Request timed out after {REQUEST_TIMEOUT}s"}
         except Exception as e:
-            log.error(f"/api{suffix_from_path(self.path)} failed: {traceback.format_exc()}")
+            log.error(f"/api{self.path.replace('/api/',' ')} failed: {traceback.format_exc()}")
             response = {"error": str(e)}
         finally:
             gc.collect()
@@ -232,17 +286,15 @@ class GnmHTTPRequestHandler(BaseHTTPRequestHandler):
                 torch.cuda.empty_cache()
 
         self.wfile.write(json.dumps(response).encode('utf-8'))
-        self.log_request("POST", self.path, 200, (time.time() - t0) * 1000)
-
-def suffix_from_path(path):
-    return path.replace("/api/", " ")
 
 def run_server(port=8000):
-    global pipeline, blender, identity_sampler
+    global pipeline, blender, identity_sampler, mind_provider, conversation
     log.info("=== Initializing Server Engines ===")
     pipeline = AcousticPipeline()
     blender = EmotionBlender()
     identity_sampler = _SilentIdentitySampler()
+    mind_provider = LocalMindProvider()
+    conversation = ConversationContext()
     log.info("=== Server Engines Initialized ===")
     server_address = ('', port)
     httpd = HTTPServer(server_address, GnmHTTPRequestHandler)
