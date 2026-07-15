@@ -178,8 +178,12 @@ function initScene() {
     console.log('Head center:', center.toArray().map(v=>v.toFixed(4)));
     console.log('Head size:', size.toArray().map(v=>v.toFixed(4)));
 
-    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 0.23, 0.45);
+    const fovRad = 45 * Math.PI / 180;
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const distance = (maxDim / 2) / Math.tan(fovRad / 2) * 1.4;
+    console.log('Distance:', distance.toFixed(4), 'from maxDim:', maxDim.toFixed(4));
+
+    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, distance * 0.01, distance * 10);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -190,12 +194,10 @@ function initScene() {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.target.set(0, 0.23, 0.03);
-
-    console.log('BB center:', center.toArray().map(v=>v.toFixed(4)));
-    console.log('BB size:', size.toArray().map(v=>v.toFixed(4)));
-    console.log('Camera:', camera.position.toArray().map(v=>v.toFixed(4)));
-    console.log('Target:', controls.target.toArray().map(v=>v.toFixed(4)));
+    controls.target.copy(center);
+    camera.position.set(center.x, center.y, center.z + distance);
+    camera.updateProjectionMatrix();
+    controls.update();
 
     const amb = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(amb);
