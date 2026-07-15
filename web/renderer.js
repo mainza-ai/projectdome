@@ -163,8 +163,8 @@ function initScene() {
     scene.background = new THREE.Color(0xf5f5f7);
 
     const aspect = container.clientWidth / container.clientHeight;
-    camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 100);
-    camera.position.set(0, 0.24, 0.50);
+    camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
+    camera.position.set(0, 0.20, 0.58);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -177,7 +177,7 @@ function initScene() {
     controls.maxPolarAngle = Math.PI / 2 + 0.1;
     controls.minDistance = 0.2;
     controls.maxDistance = 1.0;
-    controls.target.set(0, 0.24, 0.03);
+    controls.target.set(0, 0.20, 0.03);
 
     const amb = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(amb);
