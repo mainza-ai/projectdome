@@ -51,6 +51,14 @@ Found and fixed two root causes of the mouth-not-moving bug:
 1. **Web renderer bug**: `finalCoeffs` was overwriting blended speech coefficients with emotion upper-face values (line 352-353 in renderer.js). Fix: use `blended` directly.
 2. **Wrong viseme coefficients**: Assumed PCA components corresponded to anatomical jaw opening — but `lower_face_region_000` (set to 1.2 for "aa") actually raises the upper lip, not opens the jaw. Used GNM model probing to discover that `lower_face_region_001` (index 1 in 182-dim space) is the true jaw-opening component. Rebuilt entire viseme table with verified GNM-compatible coefficients. Verified: "aa" now produces lip center downward displacement of -0.011 units.
 
+## [2026-07-15] audit | Deep dive into GNM and VOCA codebases
+Full source-code audit of vendor/GNM/gnm/shape/ (gnm_xnp.py, gnm_common.py, gnm_numpy.py) and vendor/voca/ (run_voca.py, utils/). Identified 18 gaps across 4 categories:
+- GNM rendering: 3 CRITICAL (pose correctives, joint identity basis, LBS math), 3 HIGH, 2 MEDIUM
+- VOCA training: 4 HIGH (audio features, model architecture, loss function, config system)
+- Server hardening: 3 HIGH, 2 MEDIUM
+- Testing: 0 coverage for server, GNM, or JS
+Documented in wiki/deep-dive-audit.md with full attribute map and implementation plan.
+
 ## [2026-07-15] fix | Emotion/speech blend conflict
 CVAE emotion coefficients span the entire lower face (up to 4.7 magnitude for BLOW), conflicting with speech visemes. Fixed blend to use per-channel magnitude comparison: where speech energy > 0.15*emotion energy, speech wins; otherwise emotion tints the lower face subtly. Upper face (0-199) and pupils remain full emotion. Verified: 26 tests pass, all endpoints working.
 
