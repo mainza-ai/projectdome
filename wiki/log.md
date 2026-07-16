@@ -82,6 +82,17 @@ Found and fixed the root cause of "head stuck at bottom of viewport": the LBS sk
 
 Created troubleshooting.md with 10 documented issues covering: LBS skinning bug, camera distance, buffer loading failures, mouth animation, missing triangles, OrbitControls jumping, emotion blend weakness, audio/viseme sync, server startup, and integration test setup. Updated web-renderer.md with current camera positioning and LBS details.
 
+## [2026-07-15] plan | Path B implementation plan created
+Created `wiki/path-b-implementation-plan.md` with detailed 6-phase implementation:
+- Phase 0: Quick wins — limit emotion to upper face, remove blend function
+- Phase 1: Training data pipeline — FLAME→GNM vertex offset conversion
+- Phase 2: SpeechToVertexModel — VOCA-inspired architecture with PCA-initialized VertexLayer
+- Phase 3: Server-side inference — `/api/speak/v2` endpoint with sliding window
+- Phase 4: Client rendering — apply vertex offsets in render loop, remove blend
+- Phase 5: Deprecate Path A artifacts — clean up viseme table, interpolator, etc.
+- Phase 6: Testing — model tests, data tests, integration tests
+Includes dependency graph, timeline estimate (~7-10 days), and pseudocode for every component.
+
 ## [2026-07-15] audit | VOCA vs GNM architecture deep-dive
 Completed a 22-file deep-dive audit comparing VOCA's speech animation architecture against GNM's model parameterization and our current integration. 7 key findings documented:
 1. VOCA outputs raw vertex offsets (3×V), not model parameters — bypasses PCA entirely

@@ -42,6 +42,7 @@ A GNM-based conversational 3D avatar engine ("the arbiter"). $0 budget, fully lo
 - [[production-audit|Production Audit & Integration Plan]] — gap analysis vs GNM + VOCA
 - [[speech-production-plan|Speech Animation Production Plan]] — 8-gap analysis, P0-P3 implementation priorities
 - [[voca-gnm-audit|VOCA vs GNM Architecture Audit]] — **fundamental findings**: VOCA outputs vertex offsets, GNM's PCA is too weak for speech, no jaw joint, correct separation of concerns
+- [[path-b-implementation-plan|Path B Implementation Plan]] — detailed 6-phase rewrite: emotion fix → training data → model → server → client → cleanup
 
 ## Tools & Stack
 
