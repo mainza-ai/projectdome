@@ -64,11 +64,11 @@ blended[350 + i] = speechCoeffs[150 + i] + 0.3 * emotionCoeffs[350 + i];
 
 ## Implementation Plan (Priority Order)
 
-| Priority | Gap | File(s) | Effort | Fix | Status |
-|----------|-----|---------|--------|-----|--------|
-| **P0** | **#2: Binary blend switch** | `web/animation_controller.js` | 3 lines | Revert to additive blend. Fix `\|\|` bug. | **DONE** |
-| **P0** | **#1A: PCA scale too small** | `data/viseme_table.json` | Coefficient tuning | Scale lower-face coefficients 10×. Test for artifacts. | **DONE** |
-| **P0** | **#7: Alignment fallback** | `web/animation_controller.js` | ~20 lines | Add phoneme-rate fallback in `getSpeechCoefficients()` | **DONE** |
+| Priority | Gap | File(s) | Effort | Fix |
+|----------|-----|---------|--------|-----|
+| **P0** | **#2: Binary blend switch** | `web/animation_controller.js` | 3 lines | Revert to additive blend. Fix `\|\|` bug. |
+| **P0** | **#1A: PCA scale too small** | `data/viseme_table.json` | Coefficient tuning | Scale lower-face coefficients 10×. Test for artifacts. |
+| **P0** | **#7: Alignment fallback** | `web/animation_controller.js` | ~20 lines | Add phoneme-rate fallback in `getSpeechCoefficients()` |
 | **P1** | **#4: Neural training (Path B)** | `src/training/` | Major | Train `SpeechToCoefficientsModel` on VOCASET reprojected to GNM space |
 | **P2** | **#5: LBS verification** | `web/renderer.js`, tests | 1 test | Unit test comparing web LBS output vs GNM Python output |
 | **P2** | **#6: Identity calibration** | `web/animation_controller.js` | 1 module | Identity-aware viseme coefficient scaling |
