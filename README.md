@@ -106,6 +106,28 @@ open http://localhost:8080/
 
 The first startup downloads Piper TTS (~50 MB) and Wav2TextGrid (~1 GB) models. Subsequent starts use the cached files.
 
+### VOCA Model & Training Data (Optional)
+
+For **speaking style selection** (12 VOCASET styles) and **Path B neural training**, download from [https://voca.is.tue.mpg.de/download.php](https://voca.is.tue.mpg.de/download.php):
+
+| File | Size | Place in | Purpose |
+|------|------|----------|---------|
+| `trained_model.zip` | ~12 MB | `voca/model/checkpoints/best_model.pt` | Pretrained VOCA speech-to-coefficients checkpoint. Enables the speaking-style dropdown (0–11) and serves as a baseline for Path B fine-tuning. |
+| `training_data.zip` | ~8 GB | `voca/trainingdata/` | VOCASET: 12 subjects × 40 English sentences each, with FLAME-topology meshes, audio, and phoneme annotations. Required for Path B training (`src/training/run_pipeline.py`). |
+
+After downloading:
+
+```bash
+# Trained model
+unzip trained_model.zip -d voca/model/checkpoints/
+mv voca/model/checkpoints/best_model.pt voca/model/checkpoints/  # adjust path if nested
+
+# Training data
+unzip training_data.zip -d voca/trainingdata/
+```
+
+The server detects `voca/model/checkpoints/best_model.pt` on startup and enables style-aware synthesis automatically. Without it, speech synthesis uses Path A (hand-tuned viseme lookup) with neutral style.
+
 ---
 
 ## API Quick Reference

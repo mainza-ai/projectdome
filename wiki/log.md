@@ -81,3 +81,16 @@ Full audit after production execution: 12 items fixed, 10 remaining gaps identif
 Found and fixed the root cause of "head stuck at bottom of viewport": the LBS skinning matrix formula in `deformMesh()` was computing `T = makeTranslation(jw - R*jr)` instead of `T = makeTranslation(jw)`. The extra `-R*jr` subtraction doubled with `invBind`'s `-jr` to produce `-2*R*jr`, shifting every vertex by `-sum(w_j × joint_position_j)` — approximately −0.207 in Y. Camera was positioned correctly for the unshifted template; the skinning was the silent conflict.
 
 Created troubleshooting.md with 10 documented issues covering: LBS skinning bug, camera distance, buffer loading failures, mouth animation, missing triangles, OrbitControls jumping, emotion blend weakness, audio/viseme sync, server startup, and integration test setup. Updated web-renderer.md with current camera positioning and LBS details.
+
+## [2026-07-15] audit + plan | Full speech animation architecture audit
+Completed a 18-file deep-dive audit of the entire speech animation pipeline (GNM library, server, alignment, web client, training model). Identified 8 architectural gaps preventing production-quality mouth animation:
+1. No jaw joint in skeleton — PCA displacement max 0.008/unit (vs 0.018 from 5.7° joint rotation)
+2. Binary speech-energy gate removes emotion contribution
+3. Pose correctives all zeros (model data limitation)
+4. PCA coefficient scale too small for speech (needs 10-20×)
+5. Web LBS double-invBind bug (fixed)
+6. No identity-calibrated viseme scaling
+7. No alignment pipeline fallback
+8. No GPU compute for deformation
+
+Created wiki/speech-production-plan.md with P0-P3 prioritized implementation plan. Updated README with VOCA download instructions. Updated wiki/index.md and roadmap.md to reference the new plan.

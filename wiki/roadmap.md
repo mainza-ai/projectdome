@@ -1,4 +1,4 @@
-For the detailed step-by-step engineering plan, see the [[implementation-plan|Implementation Plan]].
+For the detailed gap analysis and prioritized implementation plan, see the [[speech-production-plan|Speech Animation Production Plan]].
 
 ## Pre-Phase 0 — Repository Bootstrap
 - [ ] Initialize git and remote `mainza-ai/projectdome`

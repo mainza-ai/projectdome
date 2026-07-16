@@ -39,7 +39,8 @@ A GNM-based conversational 3D avatar engine ("the arbiter"). $0 budget, fully lo
 
 ## Production Readiness
 
-- [[production-audit|Production Audit & Integration Plan]] — gap analysis vs GNM + VOCA, phased implementation plan
+- [[production-audit|Production Audit & Integration Plan]] — gap analysis vs GNM + VOCA
+- [[speech-production-plan|Speech Animation Production Plan]] — 8-gap analysis, P0-P3 implementation priorities
 
 ## Tools & Stack
 
