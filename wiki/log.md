@@ -82,6 +82,16 @@ Found and fixed the root cause of "head stuck at bottom of viewport": the LBS sk
 
 Created troubleshooting.md with 10 documented issues covering: LBS skinning bug, camera distance, buffer loading failures, mouth animation, missing triangles, OrbitControls jumping, emotion blend weakness, audio/viseme sync, server startup, and integration test setup. Updated web-renderer.md with current camera positioning and LBS details.
 
+## [2026-07-15] audit | VOCA vs GNM architecture deep-dive
+Completed a 22-file deep-dive audit comparing VOCA's speech animation architecture against GNM's model parameterization and our current integration. 7 key findings documented:
+1. VOCA outputs raw vertex offsets (3×V), not model parameters — bypasses PCA entirely
+2. GNM's expression PCA maxes at 0.008 displacement per unit coefficient — ~100× too weak for speech
+3. GNM has no jaw joint (4 joints: neck, head, eyes); FLAME has explicit jaw rotation (pose[6:9])
+4. VOCA's ExpressionLayer initializes from FLAME's basis, then trains — our model should follow the same pattern
+5. VOCA's training loss operates on vertices, not coefficients — our pipeline should too
+6. Correct separation: speech uses vertex offsets, emotion uses PCA (upper face only), no blend function needed
+7. Current code makes 7 specific architectural mistakes (documented in voca-gnm-audit.md)
+
 ## [2026-07-15] audit + plan | Full speech animation architecture audit
 Completed a 18-file deep-dive audit of the entire speech animation pipeline (GNM library, server, alignment, web client, training model). Identified 8 architectural gaps preventing production-quality mouth animation:
 1. No jaw joint in skeleton — PCA displacement max 0.008/unit (vs 0.018 from 5.7° joint rotation)
