@@ -379,7 +379,7 @@ function renderLoop(time) {
     if (activeUtterancePlaying && visemeTimeline) {
         const ts = audioSync.getCurrentTime();
         document.getElementById("audio-time").innerText = `${ts.toFixed(2)}s / ${audioSync.getDuration().toFixed(2)}s`;
-        blended = animController.blend(animController.getSpeechCoefficients(ts, visemeTimeline), currentEmotionCoeffs);
+        blended = animController.blend(animController.getSpeechCoefficients(ts, visemeTimeline, audioSync.getDuration()), currentEmotionCoeffs);
     } else {
         blended = animController.blend(new Array(182).fill(0.0), currentEmotionCoeffs);
     }

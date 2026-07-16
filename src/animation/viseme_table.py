@@ -38,32 +38,36 @@ class VisemeTable:
         # [2]=lower_face_region_002 (lip spread/narrow), [3-149]=other lower face components
         # [150-181]=tongue components
 
-        self.table["aa"][1] = 2.5
-        self.table["aa"][0] = -0.5
-        self.table["aa"][2] = 0.5
+        # Lower-face coefficients (indices 0-149) scaled by 10x for visible
+        # speech mouth opening. The GNM PCA basis produces only 0.008 max
+        # displacement per unit coefficient, so speech needs 10-20x emotion scale.
+        # Tongue coefficients (150-181) left at original scale.
+        self.table["aa"][1] = 25.0
+        self.table["aa"][0] = -5.0
+        self.table["aa"][2] = 5.0
 
-        self.table["EE"][2] = 2.0
-        self.table["EE"][1] = 1.0
-        self.table["EE"][3] = 0.3
+        self.table["EE"][2] = 20.0
+        self.table["EE"][1] = 10.0
+        self.table["EE"][3] = 3.0
 
-        self.table["OO"][1] = -1.0
-        self.table["OO"][2] = -0.8
+        self.table["OO"][1] = -10.0
+        self.table["OO"][2] = -8.0
         self.table["OO"][TONGUE_OFFSET] = -0.3
 
-        self.table["PP"][1] = -1.5
-        self.table["PP"][0] = -0.5
-        self.table["PP"][3] = 0.5
+        self.table["PP"][1] = -15.0
+        self.table["PP"][0] = -5.0
+        self.table["PP"][3] = 5.0
 
-        self.table["FF"][1] = -0.3
-        self.table["FF"][3] = 0.5
+        self.table["FF"][1] = -3.0
+        self.table["FF"][3] = 5.0
         self.table["FF"][TONGUE_OFFSET + 2] = 0.3
 
-        self.table["TH"][1] = 0.3
+        self.table["TH"][1] = 3.0
         self.table["TH"][TONGUE_OFFSET] = 1.0
         self.table["TH"][TONGUE_OFFSET + 1] = 0.8
         self.table["TH"][TONGUE_OFFSET + 2] = 0.3
 
-        self.table["DD"][1] = 0.5
+        self.table["DD"][1] = 5.0
         self.table["DD"][TONGUE_OFFSET] = 0.6
         self.table["DD"][TONGUE_OFFSET + 1] = 0.7
 
@@ -71,7 +75,7 @@ class VisemeTable:
         self.table["CH"][TONGUE_OFFSET + 2] = 0.6
         self.table["CH"][TONGUE_OFFSET + 3] = 0.4
 
-        self.table["kk"][2] = -0.3
+        self.table["kk"][2] = -3.0
         self.table["kk"][TONGUE_OFFSET + 1] = 0.7
         self.table["kk"][TONGUE_OFFSET + 2] = 0.5
 
@@ -84,7 +88,7 @@ class VisemeTable:
         self.table["RR"][TONGUE_OFFSET + 2] = 0.5
         self.table["RR"][TONGUE_OFFSET + 3] = 0.3
 
-        self.table["schwa"][1] = 0.5
+        self.table["schwa"][1] = 5.0
         self.table["schwa"][TONGUE_OFFSET] = 0.3
 
     def get_coefficients(self, name: str) -> np.ndarray:
